@@ -1,0 +1,153 @@
+import { useState, useEffect, useRef } from 'react';
+import { useGameStore } from './stores/gameStore';
+import { TopBar } from './components/TopBar';
+import { Sidebar } from './components/Sidebar';
+import { MarketView } from './components/MarketView';
+import { PortfolioView } from './components/PortfolioView';
+import { NewsView } from './components/NewsView';
+import { RotterView } from './components/RotterView';
+import { BrainrotIndex } from './components/BrainrotIndex';
+import { TradingRoom } from './components/TradingRoom';
+import { MissionsView } from './components/MissionsView';
+import { AchievementsView } from './components/AchievementsView';
+import { StatisticsView } from './components/StatisticsView';
+import { PrestigeView } from './components/PrestigeView';
+import { SettingsView } from './components/SettingsView';
+
+function App() {
+  const initGame = useGameStore(s => s.initGame);
+  const marketTick = useGameStore(s => s.marketTick);
+  const speed = useGameStore(s => s.speed);
+  const paused = useGameStore(s => s.paused);
+  const settings = useGameStore(s => s.settings);
+
+  const [activeView, setActiveView] = useState('market');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTickRef = useRef(0);
+
+  // Initialize game
+  useEffect(() => {
+    initGame();
+  }, [initGame]);
+
+  // Market tick loop
+  useEffect(() => {
+    if (paused) {
+      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
+      return;
+    }
+
+    // Tick rate: 1 tick per 5 seconds at 1x speed
+    // Interval = 5000/speed ms, always 1 tick per interval
+    //  1x = 1 tick / 5s, 2x = 1 tick / 2.5s, 5x = 1 tick / 1s, 10x = 1 tick / 0.5s
+    const tickInterval = Math.max(500, 5000 / speed);
+
+    const tick = () => {
+      marketTick();
+    };
+
+    tickRef.current = setInterval(tick, tickInterval);
+    lastTickRef.current = Date.now();
+
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+    };
+  }, [speed, paused, marketTick]);
+
+  // Autosave every 30 seconds
+  useEffect(() => {
+    const autosave = setInterval(() => {
+      try {
+        const json = useGameStore.getState().exportSave();
+        localStorage.setItem('brainrot_exchange_save', json);
+      } catch {
+        // Silently fail
+      }
+    }, 30000);
+
+    return () => clearInterval(autosave);
+  }, []);
+
+  const renderView = () => {
+    switch (activeView) {
+      case 'market': return <MarketView />;
+      case 'portfolio': return <PortfolioView />;
+      case 'news': return <NewsView />;
+      case 'rotter': return <RotterView />;
+      case 'index': return <BrainrotIndex />;
+      case 'room': return <TradingRoom />;
+      case 'missions': return <MissionsView />;
+      case 'achievements': return <AchievementsView />;
+      case 'stats': return <StatisticsView />;
+      case 'prestige': return <PrestigeView />;
+      case 'settings': return <SettingsView />;
+      default: return <MarketView />;
+    }
+  };
+
+  return (
+    <div className={`min-h-screen bg-brainrot-dark ${!settings.reducedMotion ? 'scanline' : ''}`}>
+      <TopBar onMenuClick={() => setMobileDrawerOpen(true)} />
+
+      {/* Mobile drawer */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-[60] sm:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileDrawerOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-56 bg-brainrot-darker border-r border-brainrot-border p-2">
+            <div className="flex justify-between items-center mb-2 px-2">
+              <span className="text-brainrot-accent font-bold text-sm">🧠 BRAINROT</span>
+              <button onClick={() => setMobileDrawerOpen(false)} className="text-brainrot-muted text-lg">✕</button>
+            </div>
+            <Sidebar
+              activeView={activeView}
+              onViewChange={(v) => { setActiveView(v); setMobileDrawerOpen(false); }}
+              collapsed={false}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Desktop sidebar */}
+      <div className="hidden sm:block">
+        <Sidebar
+          activeView={activeView}
+          onViewChange={setActiveView}
+          collapsed={sidebarCollapsed}
+        />
+      </div>
+
+      {/* Collapse toggle for desktop */}
+      <button
+        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        className="hidden sm:block fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-brainrot-darker border border-brainrot-border rounded-r p-1 text-brainrot-muted hover:text-brainrot-accent transition-colors"
+        style={{ left: sidebarCollapsed ? '48px' : '192px' }}
+      >
+        {sidebarCollapsed ? '→' : '←'}
+      </button>
+
+      {/* Main content */}
+      <main
+        className="pt-12 pb-8 px-3 sm:px-6 transition-all duration-200"
+        style={{
+          marginLeft: sidebarCollapsed ? '60px' : '200px',
+        }}
+      >
+        <div className="max-w-6xl mx-auto">
+          {renderView()}
+        </div>
+      </main>
+
+      {/* Late-game absurdity */}
+      {useGameStore.getState().prestigeLevel > 2 && !settings.reducedGlitch && (
+        <div className="fixed bottom-4 right-4 text-2xl opacity-30 pointer-events-none select-none animate-pulse">
+          🧠🔄💀
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;

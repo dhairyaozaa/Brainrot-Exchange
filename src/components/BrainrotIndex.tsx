@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { Chart } from './Chart';
-import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import { getCategoryStyle } from '../utils/categoryColors';
 import type { BrainrotCategory } from '../types';
 
 export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {

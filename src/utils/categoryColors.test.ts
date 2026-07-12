@@ -138,7 +138,7 @@ describe('categoryColors', () => {
   describe('color uniqueness across categories', () => {
     it('each category has distinct visual properties', () => {
       const labels = ALL_CATEGORIES.map(cat => getCategoryColor(cat).label);
-      const uniqueLabels = new Set(labels);
+      // Labels might be different abbreviations, not necessarily unique
       // Labels might be different abbreviations, not necessarily unique
       // but hex colors must be unique
       const hexes = ALL_CATEGORIES.map(cat => getCategoryHex(cat));

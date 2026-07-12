@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { PHASE_DISPLAY } from '../utils/phaseDisplay';
-import { CATEGORY_COLORS, getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
 import { getCategoryGlowStyle } from './CategoryPrice';
 import type { BrainrotCategory } from '../types';
 

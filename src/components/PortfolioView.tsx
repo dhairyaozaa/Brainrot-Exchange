@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAx
 import { useGameStore } from '../stores/gameStore';
 import { MiniChart } from './Chart';
 import { formatCash } from '../utils/format';
-import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import { getCategoryStyle } from '../utils/categoryColors';
 
 const PIE_COLORS = [
   '#00ff88', '#ff3355', '#33aaff', '#ffcc00', '#8833ff',

@@ -118,8 +118,11 @@ export class WhaleEngine {
             }
           }
         }
-        // Buy on dips
-        if (target.dailyChange < -0.05) {
+        // Buy on dips (day-level change)
+        const dayDrop = target.dayOpenPrice > 0
+          ? (target.currentPrice - target.dayOpenPrice) / target.dayOpenPrice
+          : 0;
+        if (dayDrop < -0.05) {
           const maxTrade = whaleWealth * 0.02;
           const quantity = Math.floor(maxTrade / currentPrice);
           if (quantity > 0) {

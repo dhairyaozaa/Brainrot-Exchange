@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useGameStore } from '../stores/gameStore';
-import { AssetDetail } from './AssetDetail';
+import { PHASE_DISPLAY } from '../utils/phaseDisplay';
 
 
-export function MarketView() {
+export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const brainrots = useGameStore(s => s.brainrots);
   const holdings = useGameStore(s => s.holdings);
   const cash = useGameStore(s => s.cash);
   const marketStatus = useGameStore(s => s.marketStatus);
   const buyShares = useGameStore(s => s.buyShares);
   const sellShares = useGameStore(s => s.sellShares);
+  const shortSellShares = useGameStore(s => s.shortSellShares);
+  const buyToCover = useGameStore(s => s.buyToCover);
   const globalSentiment = useGameStore(s => s.globalSentiment);
   const marketCondition = useGameStore(s => s.marketCondition);
   const recentWhaleTrades = useGameStore(s => s.recentWhaleTrades);
@@ -19,8 +21,8 @@ export function MarketView() {
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
-  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'change' | 'hype'>('change');
+  
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'change' | 'hype' | 'phase'>('change');
 
   const filtered = brainrots
     .filter(b => b.unlocked)
@@ -36,8 +38,16 @@ export function MarketView() {
       switch (sortBy) {
         case 'name': return a.name.localeCompare(b.name);
         case 'price': return b.currentPrice - a.currentPrice;
-        case 'change': return Math.abs(b.dailyChange) - Math.abs(a.dailyChange);
+        case 'change': {
+          const aChange = a.dayOpenPrice > 0 ? (a.currentPrice - a.dayOpenPrice) / a.dayOpenPrice : 0;
+          const bChange = b.dayOpenPrice > 0 ? (b.currentPrice - b.dayOpenPrice) / b.dayOpenPrice : 0;
+          return Math.abs(bChange) - Math.abs(aChange);
+        }
         case 'hype': return b.hype - a.hype;
+        case 'phase': {
+          const order = ['breakout', 'uptrend', 'accumulation', 'distribution', 'downtrend', 'panic'];
+          return order.indexOf(a.phase) - order.indexOf(b.phase);
+        }
         default: return 0;
       }
     });
@@ -66,9 +76,20 @@ export function MarketView() {
     }
   };
 
-  if (selectedAsset) {
-    return <AssetDetail assetId={selectedAsset} onBack={() => setSelectedAsset(null)} />;
-  }
+  const handleQuickShort = (assetId: string) => {
+    const asset = brainrots.find(b => b.id === assetId);
+    if (!asset) return;
+    // 25% of cash for 100% margin, with fee adjustment
+    const qty = Math.max(1, Math.floor((cash * 0.25) / (asset.currentPrice * 1.025)));
+    if (qty > 0) shortSellShares(assetId, qty);
+  };
+
+  const handleQuickCover = (assetId: string) => {
+    const holding = getHolding(assetId);
+    if (holding && holding.shortQuantity > 0) {
+      buyToCover(assetId, Math.ceil(holding.shortQuantity * 0.25));
+    }
+  };  
 
   return (
     <div className="space-y-3">
@@ -110,6 +131,7 @@ export function MarketView() {
             <option value="price">Price</option>
             <option value="name">Name</option>
             <option value="hype">Hype</option>
+            <option value="phase">Phase</option>
           </select>
         </div>
       </div>
@@ -131,12 +153,15 @@ export function MarketView() {
       <div className="sm:hidden space-y-2">
         {filtered.map(asset => {
           const holding = getHolding(asset.id);
-          const isUp = asset.dailyChange >= 0;
+          const dayChangePct = asset.dayOpenPrice > 0
+            ? (asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice
+            : 0;
+          const isUp = dayChangePct >= 0;
           return (
             <div
               key={asset.id}
               className="bg-brainrot-card border border-brainrot-border rounded-lg p-3 space-y-2 cursor-pointer hover:border-brainrot-accent/50 transition-colors"
-              onClick={() => setSelectedAsset(asset.id)}
+              onClick={() => onViewAsset?.(asset.id)}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -149,29 +174,28 @@ export function MarketView() {
                 <div className="text-right">
                   <div className="text-sm font-mono">{formatPrice(asset.currentPrice)}</div>
                   <div className={`text-xs font-mono ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                    {isUp ? '▲' : '▼'} {(asset.dailyChange * 100).toFixed(2)}%
+                    {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
                   </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs text-brainrot-muted">
-                <span>Vol: {asset.volume.toLocaleString()}</span>
-                <span>Hype: {asset.hype.toFixed(0)}%</span>
-                <span className={
-                  asset.riskRating === 'Low' ? 'text-brainrot-accent' :
-                  asset.riskRating === 'Medium' ? 'text-brainrot-yellow' :
-                  asset.riskRating === 'High' ? 'text-brainrot-orange' :
-                  asset.riskRating === 'Extreme' ? 'text-brainrot-red' :
-                  'text-brainrot-pink'
-                }>
-                  {asset.riskRating}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-brainrot-muted">Vol: {asset.volume.toLocaleString()}</span>
+                <span className="text-brainrot-muted">Hype: {asset.hype.toFixed(0)}%</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${PHASE_DISPLAY[asset.phase].bg} ${PHASE_DISPLAY[asset.phase].color} ${PHASE_DISPLAY[asset.phase].border} border`}>
+                  {PHASE_DISPLAY[asset.phase].icon} {PHASE_DISPLAY[asset.phase].label}
                 </span>
               </div>
               {holding && holding.quantity > 0 && (
                 <div className="text-xs text-brainrot-blue">
-                  Holdings: {holding.quantity} @ Avg ₹{holding.averagePurchasePrice.toFixed(2)}
+                  Long: {holding.quantity} @ ₹{holding.averagePurchasePrice.toFixed(2)}
                 </div>
               )}
-              <div className="flex gap-2">
+              {holding && holding.shortQuantity > 0 && (
+                <div className="text-xs text-brainrot-orange">
+                  Short: {holding.shortQuantity} @ ₹{holding.averageShortPrice.toFixed(2)}
+                </div>
+              )}
+              <div className="flex gap-1 flex-wrap">
                 <button
                   onClick={(e) => { e.stopPropagation(); handleQuickBuy(asset.id); }}
                   disabled={marketStatus !== 'Open'}
@@ -185,6 +209,20 @@ export function MarketView() {
                   className="flex-1 bg-brainrot-red/20 text-brainrot-red border border-brainrot-red/30 rounded px-2 py-1 text-xs font-mono hover:bg-brainrot-red/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   Sell
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleQuickShort(asset.id); }}
+                  disabled={marketStatus !== 'Open' || cash < asset.currentPrice * 1.025}
+                  className="flex-1 bg-brainrot-orange/20 text-brainrot-orange border border-brainrot-orange/30 rounded px-2 py-1 text-xs font-mono hover:bg-brainrot-orange/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Short
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleQuickCover(asset.id); }}
+                  disabled={marketStatus !== 'Open' || !holding || !holding.shortQuantity || holding.shortQuantity <= 0}
+                  className="flex-1 bg-purple-600/20 text-purple-400 border border-purple-600/30 rounded px-2 py-1 text-xs font-mono hover:bg-purple-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Cover
                 </button>
               </div>
             </div>
@@ -200,8 +238,9 @@ export function MarketView() {
               <th className="text-left py-2 px-2">Asset</th>
               <th className="text-left py-2 px-2">Ticker</th>
               <th className="text-right py-2 px-2">Price</th>
-              <th className="text-right py-2 px-2">24h</th>
+              <th className="text-right py-2 px-2">Day</th>
               <th className="text-right py-2 px-2">Vol</th>
+              <th className="text-center py-2 px-2">Phase</th>
               <th className="text-right py-2 px-2">Hype</th>
               <th className="text-center py-2 px-2">Risk</th>
               <th className="text-right py-2 px-2">Holdings</th>
@@ -211,28 +250,37 @@ export function MarketView() {
           <tbody>
             {filtered.map(asset => {
               const holding = getHolding(asset.id);
-              const isUp = asset.dailyChange >= 0;
+              const dayChangePct = asset.dayOpenPrice > 0
+                ? (asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice
+                : 0;
+              const isUp = dayChangePct >= 0;
               return (
                 <tr
                   key={asset.id}
                   className="border-b border-brainrot-border/50 hover:bg-brainrot-card/50 cursor-pointer transition-colors"
-                  onClick={() => setSelectedAsset(asset.id)}
+                  onClick={() => onViewAsset?.(asset.id)}
                 >
                   <td className="py-2 px-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{asset.icon}</span>
-                      <span className="text-brainrot-text truncate max-w-[120px]">{asset.name}</span>
+                      <span className="text-brainrot-text truncate max-w-[120px] group-hover:text-brainrot-accent transition-colors">{asset.name}</span>
                     </div>
                   </td>
                   <td className="py-2 px-2 font-bold text-brainrot-text">{asset.ticker}</td>
                   <td className="py-2 px-2 text-right">{formatPrice(asset.currentPrice)}</td>
                   <td className={`py-2 px-2 text-right ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                    {isUp ? '▲' : '▼'} {(asset.dailyChange * 100).toFixed(2)}%
+                    {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
                   </td>
                   <td className="py-2 px-2 text-right text-brainrot-muted">
                     {asset.volume >= 1000000 ? `${(asset.volume / 1000000).toFixed(1)}M` :
                      asset.volume >= 1000 ? `${(asset.volume / 1000).toFixed(1)}K` :
                      asset.volume.toFixed(0)}
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${PHASE_DISPLAY[asset.phase].bg} ${PHASE_DISPLAY[asset.phase].color} ${PHASE_DISPLAY[asset.phase].border} border`} title={PHASE_DISPLAY[asset.phase].label}>
+                      {PHASE_DISPLAY[asset.phase].icon}
+                      <span className="hidden lg:inline ml-0.5">{PHASE_DISPLAY[asset.phase].label}</span>
+                    </span>
                   </td>
                   <td className="py-2 px-2 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -255,26 +303,46 @@ export function MarketView() {
                       {asset.riskRating === 'Financial Suicide' ? '💀' : asset.riskRating}
                     </span>
                   </td>
-                  <td className="py-2 px-2 text-right text-brainrot-blue">
-                    {holding && holding.quantity > 0
-                      ? `${holding.quantity} @ ₹${holding.averagePurchasePrice.toFixed(0)}`
-                      : '-'}
+                  <td className="py-2 px-2 text-right">
+                    {holding && holding.quantity > 0 && (
+                      <div className="text-brainrot-blue text-[10px]">▲ {holding.quantity} @ ₹{holding.averagePurchasePrice.toFixed(0)}</div>
+                    )}
+                    {holding && holding.shortQuantity > 0 && (
+                      <div className="text-brainrot-orange text-[10px]">▼ {holding.shortQuantity} @ ₹{holding.averageShortPrice.toFixed(0)}</div>
+                    )}
+                    {(!holding || (holding.quantity <= 0 && holding.shortQuantity <= 0)) && (
+                      <span className="text-brainrot-muted">-</span>
+                    )}
                   </td>
                   <td className="py-2 px-2" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-1 justify-center">
+                    <div className="flex gap-1 justify-center flex-wrap">
                       <button
                         onClick={() => handleQuickBuy(asset.id)}
                         disabled={marketStatus !== 'Open'}
-                        className="px-2 py-1 bg-brainrot-accent/20 text-brainrot-accent border border-brainrot-accent/30 rounded text-xs hover:bg-brainrot-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="px-1.5 py-1 bg-brainrot-accent/20 text-brainrot-accent border border-brainrot-accent/30 rounded text-xs hover:bg-brainrot-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         Buy
                       </button>
                       <button
                         onClick={() => handleQuickSell(asset.id)}
                         disabled={marketStatus !== 'Open' || !holding || holding.quantity <= 0}
-                        className="px-2 py-1 bg-brainrot-red/20 text-brainrot-red border border-brainrot-red/30 rounded text-xs hover:bg-brainrot-red/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="px-1.5 py-1 bg-brainrot-red/20 text-brainrot-red border border-brainrot-red/30 rounded text-xs hover:bg-brainrot-red/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         Sell
+                      </button>
+                      <button
+                        onClick={() => handleQuickShort(asset.id)}
+                        disabled={marketStatus !== 'Open' || cash < asset.currentPrice * 1.025}
+                        className="px-1.5 py-1 bg-brainrot-orange/20 text-brainrot-orange border border-brainrot-orange/30 rounded text-xs hover:bg-brainrot-orange/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Short
+                      </button>
+                      <button
+                        onClick={() => handleQuickCover(asset.id)}
+                        disabled={marketStatus !== 'Open' || !holding || !holding.shortQuantity || holding.shortQuantity <= 0}
+                        className="px-1.5 py-1 bg-purple-600/20 text-purple-400 border border-purple-600/30 rounded text-xs hover:bg-purple-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Cover
                       </button>
                     </div>
                   </td>

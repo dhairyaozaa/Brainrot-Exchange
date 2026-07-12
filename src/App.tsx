@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGameStore } from './stores/gameStore';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
@@ -13,6 +13,7 @@ import { AchievementsView } from './components/AchievementsView';
 import { StatisticsView } from './components/StatisticsView';
 import { PrestigeView } from './components/PrestigeView';
 import { SettingsView } from './components/SettingsView';
+import { AssetDetail } from './components/AssetDetail';
 
 function App() {
   const initGame = useGameStore(s => s.initGame);
@@ -20,10 +21,22 @@ function App() {
   const speed = useGameStore(s => s.speed);
   const paused = useGameStore(s => s.paused);
   const settings = useGameStore(s => s.settings);
+  const prestigeLevel = useGameStore(s => s.prestigeLevel);
 
   const [activeView, setActiveView] = useState('market');
+  const [assetDetailId, setAssetDetailId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  // Navigate to asset detail from any view
+  const openAssetDetail = useCallback((assetId: string) => {
+    setAssetDetailId(assetId);
+    setActiveView('market');
+  }, []);
+
+  const closeAssetDetail = useCallback(() => {
+    setAssetDetailId(null);
+  }, []);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTickRef = useRef(0);
 
@@ -72,19 +85,23 @@ function App() {
   }, []);
 
   const renderView = () => {
+    // If an asset detail is open, show it instead of the normal view
+    if (assetDetailId) {
+      return <AssetDetail assetId={assetDetailId} onBack={closeAssetDetail} />;
+    }
     switch (activeView) {
-      case 'market': return <MarketView />;
-      case 'portfolio': return <PortfolioView />;
-      case 'news': return <NewsView />;
-      case 'rotter': return <RotterView />;
-      case 'index': return <BrainrotIndex />;
+      case 'market': return <MarketView onViewAsset={openAssetDetail} />;
+      case 'portfolio': return <PortfolioView onViewAsset={openAssetDetail} />;
+      case 'news': return <NewsView onViewAsset={openAssetDetail} />;
+      case 'rotter': return <RotterView onViewAsset={openAssetDetail} />;
+      case 'index': return <BrainrotIndex onViewAsset={openAssetDetail} />;
       case 'room': return <TradingRoom />;
       case 'missions': return <MissionsView />;
       case 'achievements': return <AchievementsView />;
       case 'stats': return <StatisticsView />;
       case 'prestige': return <PrestigeView />;
       case 'settings': return <SettingsView />;
-      default: return <MarketView />;
+      default: return <MarketView onViewAsset={openAssetDetail} />;
     }
   };
 
@@ -141,7 +158,7 @@ function App() {
       </main>
 
       {/* Late-game absurdity */}
-      {useGameStore.getState().prestigeLevel > 2 && !settings.reducedGlitch && (
+      {prestigeLevel > 2 && !settings.reducedGlitch && (
         <div className="fixed bottom-4 right-4 text-2xl opacity-30 pointer-events-none select-none animate-pulse">
           🧠🔄💀
         </div>

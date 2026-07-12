@@ -9,7 +9,7 @@ const reliabilityColors: Record<string, string> = {
   'Posted by a Pigeon': 'bg-purple-900/50 text-purple-400 border-purple-900',
 };
 
-export function NewsView() {
+export function NewsView({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const news = useGameStore(s => s.news);
 
   return (
@@ -41,8 +41,16 @@ export function NewsView() {
                 {item.relatedAssets.length > 0 && (
                   <span className="text-brainrot-accent">Affects: {item.relatedAssets.map(id => {
                     const asset = useGameStore.getState().brainrots.find(b => b.id === id);
-                    return asset?.ticker || id;
-                  }).join(', ')}</span>
+                    return (
+                      <button
+                        key={id}
+                        onClick={(e) => { e.stopPropagation(); onViewAsset?.(id); }}
+                        className="hover:text-brainrot-text transition-colors underline decoration-dotted underline-offset-2"
+                      >
+                        {asset?.ticker || id}
+                      </button>
+                    );
+                  })}</span>
                 )}
                 {item.relatedCategories.length > 0 && (
                   <span className="text-brainrot-blue">Category: {item.relatedCategories.join(', ')}</span>

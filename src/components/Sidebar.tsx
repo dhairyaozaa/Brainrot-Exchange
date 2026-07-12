@@ -77,9 +77,13 @@ export function Sidebar({
           <span className="text-base">{item.icon}</span>
           <span>{item.label}</span>
           {getBadge(item) && (
-            <span className="ml-auto text-xs bg-brainrot-accent/20 text-brainrot-accent px-1.5 py-0.5 rounded-full">
-              {getBadge(item)}
-            </span>
+            item.id === 'prestige' ? (
+              <span className="ml-auto text-xs bg-brainrot-accent/20 text-brainrot-accent px-1.5 py-0.5 rounded-full">
+                {getBadge(item)}
+              </span>
+            ) : (
+              <span className="ml-auto w-2 h-2 rounded-full bg-brainrot-accent animate-pulse" title={getBadge(item)} />
+            )
           )}
         </button>
       ))}

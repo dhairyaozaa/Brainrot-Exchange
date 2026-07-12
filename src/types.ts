@@ -1,3 +1,19 @@
+export type TradingPhase =
+  | 'accumulation'
+  | 'uptrend'
+  | 'distribution'
+  | 'downtrend'
+  | 'breakout'
+  | 'panic';
+
+export interface CandleStick {
+  time: number;       // tick number at candle open
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
 export interface BrainrotAsset {
   id: string;
   name: string;
@@ -17,6 +33,7 @@ export interface BrainrotAsset {
   supply: number;
   demand: number;
   historicalPrices: number[];
+  candles: CandleStick[];
   dailyChange: number;
   allTimeHigh: number;
   allTimeLow: number;
@@ -26,6 +43,15 @@ export interface BrainrotAsset {
   unlockCondition?: string;
   icon: string;
   color: string;
+  dayOpenPrice: number;       // Price at market open today (for day-level % change)
+  // Phase-based market behavior
+  phase: TradingPhase;
+  phaseTicksRemaining: number;
+  trendStrength: number;        // -1 (strong bear) to +1 (strong bull), drives price
+  candleOpen: number;           // open price of current forming candle
+  candleHigh: number;           // high during current candle
+  candleLow: number;            // low during current candle
+  candleTicks: number;          // ticks elapsed in current candle
 }
 
 export type RarityTier =
@@ -149,7 +175,7 @@ export interface PlayerTrade {
   id: string;
   assetId: string;
   ticker: string;
-  type: 'Buy' | 'Sell';
+  type: 'Buy' | 'Sell' | 'Short' | 'Cover';
   quantity: number;
   price: number;
   brokerageFee: number;
@@ -161,8 +187,10 @@ export interface PlayerTrade {
 
 export interface PlayerHolding {
   assetId: string;
-  quantity: number;
+  quantity: number;           // Long position (shares owned)
   averagePurchasePrice: number;
+  shortQuantity: number;      // Short position (shares borrowed & sold)
+  averageShortPrice: number; // Average price at which short was opened
 }
 
 export interface TradingRoomUpgrade {
@@ -265,6 +293,8 @@ export interface GameState {
   goldenBrainCells: number;
   prestigeLevel: number;
   prestigeMultiplier: number;
+  taxesPaid: number;          // Total capital gains tax paid
+  bankruptcyCount: number;    // Times you've gone bankrupt
 
   settings: GameSettings;
 }
@@ -300,6 +330,8 @@ export interface SaveData {
   goldenBrainCells: number;
   prestigeLevel: number;
   prestigeMultiplier: number;
+  taxesPaid: number;
+  bankruptcyCount: number;
   settings: GameSettings;
   speed: number;
   marketCondition: MarketCondition;

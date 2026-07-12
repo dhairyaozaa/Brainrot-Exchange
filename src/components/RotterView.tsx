@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import type { RotterAccount } from '../types';
 
-export function RotterView() {
+export function RotterView({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const rotterPosts = useGameStore(s => s.rotterPosts);
   const rotterAccounts = useGameStore(s => s.rotterAccounts);
   const [selectedAccount, setSelectedAccount] = useState<RotterAccount | null>(null);
@@ -95,7 +95,23 @@ export function RotterView() {
                   <span>↻ {post.reposts >= 1000 ? `${(post.reposts / 1000).toFixed(1)}K` : post.reposts}</span>
                 </div>
               </div>
-              <p className="text-sm text-brainrot-text whitespace-pre-wrap pl-10">{post.content}</p>
+              <div className="pl-10">
+                <p className="text-sm text-brainrot-text whitespace-pre-wrap">{post.content}</p>
+                {/* Show related asset tickers as clickable chips */}
+                {post.relatedAssets.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {post.relatedAssets.map(id => (
+                      <button
+                        key={id}
+                        onClick={(e) => { e.stopPropagation(); onViewAsset?.(id); }}
+                        className="text-xs bg-brainrot-dark border border-brainrot-border rounded px-1.5 py-0.5 text-brainrot-accent font-mono hover:border-brainrot-accent hover:bg-brainrot-accent/10 transition-colors"
+                      >
+                        ${useGameStore.getState().brainrots.find(b => b.id === id)?.ticker || id}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>

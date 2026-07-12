@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type {
   GameState, PlayerTrade, WhaleTradeLog,
   TradingRoomUpgrade, PrestigeUpgrade, GameSettings,
-  MarketCondition, MarketStatus,
+  MarketCondition, MarketStatus, BrainrotAsset,
 } from '../types';
 import { RANK_ORDER, RANK_XP_THRESHOLDS } from '../types';
 import { BRAINROTS } from '../data/brainrots';
@@ -13,7 +13,7 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { MarketEngine } from '../simulation/MarketEngine';
 import { playTradeSound, playCashSound, playNewsSound, playCrashSound, playRallySound, playUpgradeSound, playPrestigeSound } from '../utils/audio';
 
-const BROKERAGE_FEE_RATE = 0.01; // 1% fee
+const BROKERAGE_FEE_RATE = 0.025; // 2.5% fee (increased for challenge)
 
 interface GameStore extends GameState {
   marketEngine: MarketEngine;
@@ -25,6 +25,8 @@ interface GameStore extends GameState {
   setPaused: (paused: boolean) => void;
   buyShares: (assetId: string, quantity: number) => boolean;
   sellShares: (assetId: string, quantity: number) => boolean;
+  shortSellShares: (assetId: string, quantity: number) => boolean;
+  buyToCover: (assetId: string, quantity: number) => boolean;
   resetGame: () => void;
   togglePause: () => void;
   purchaseUpgrade: (upgradeId: string) => boolean;
@@ -37,9 +39,9 @@ interface GameStore extends GameState {
 
 function createInitialState(): Partial<GameState> {
   return {
-    cash: 10000,
+    cash: 2500,
     holdings: [],
-    netWorth: 10000,
+    netWorth: 2500,
     totalInvested: 0,
     unrealizedProfit: 0,
     realizedProfit: 0,
@@ -65,10 +67,12 @@ function createInitialState(): Partial<GameState> {
 
     brainrots: BRAINROTS.map(b => ({
       ...b,
+      unlocked: b.rarity === 'Common' || b.rarity === 'Uncommon',
       historicalPrices: [b.startingPrice],
       currentPrice: b.startingPrice,
       allTimeHigh: b.startingPrice,
       allTimeLow: b.startingPrice,
+      dayOpenPrice: b.startingPrice,
       dailyChange: 0,
       momentum: 0,
       volume: b.volume,
@@ -97,6 +101,8 @@ function createInitialState(): Partial<GameState> {
     goldenBrainCells: 0,
     prestigeLevel: 0,
     prestigeMultiplier: 1,
+    taxesPaid: 0,
+    bankruptcyCount: 0,
 
     settings: {
       reducedMotion: false,
@@ -105,6 +111,42 @@ function createInitialState(): Partial<GameState> {
       musicEnabled: false,
     },
   };
+}
+
+/** Determine if an asset should be unlocked based on net worth */
+function shouldUnlockAsset(asset: BrainrotAsset, netWorth: number): boolean {
+  if (asset.unlocked) return true;
+  switch (asset.rarity) {
+    case 'Common':
+    case 'Uncommon':
+      return true; // Always unlocked from start
+    case 'Rare':
+      return netWorth >= 200000;
+    case 'Epic':
+      return netWorth >= 1000000;
+    case 'Legendary':
+      return netWorth >= 5000000;
+    case 'Mythical':
+      return netWorth >= 50000000;
+    case 'Financially Forbidden':
+      return netWorth >= 500000000;
+    default:
+      return false;
+  }
+}
+
+/** Update brainrot assets' unlocked status based on net worth, returns updated array or null if no changes */
+function computeUnlockedBrainrots(brainrots: BrainrotAsset[], netWorth: number): BrainrotAsset[] | null {
+  const updated = brainrots.map(asset => {
+    if (asset.unlocked) return asset;
+    if (shouldUnlockAsset(asset, netWorth)) {
+      return { ...asset, unlocked: true };
+    }
+    return asset;
+  });
+
+  const changed = updated.some((a, i) => a.unlocked !== brainrots[i]?.unlocked);
+  return changed ? updated : null;
 }
 
 function createInitialUpgrades(): TradingRoomUpgrade[] {
@@ -201,13 +243,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const saved = loadGame();
     if (saved) {
       set(saved as any);
-      // Sync the MarketEngine's internal state with loaded data
+      // Sync the MarketEngine's entire internal state with loaded data
       const state = get();
       const engine = state.marketEngine;
       engine.brainrots = state.brainrots;
       engine.globalSentiment = state.globalSentiment;
       engine.marketCondition = state.marketCondition;
       engine.rotterPosts = state.rotterPosts;
+      // Restore TimeEngine state so the ticker doesn't reset
+      engine.timeEngine.setState({
+        totalTicks: state.totalTicks,
+        currentDay: state.currentDay,
+        currentWeek: state.currentWeek,
+        ticksUntilClose: state.ticksUntilClose,
+        ticksUntilOpen: state.ticksUntilOpen,
+        marketStatus: state.marketStatus as 'Open' | 'Closed',
+      });
+      // Restore whale engine state
+      engine.whaleEngine.setWhales(state.whales.map(w => ({ ...w })));
+      // Restore news engine
+      engine.newsEngine.setNews(state.news);
+    }
+
+    // Recalculate unlocked assets based on current net worth (for both fresh and loaded games)
+    const currentState = get();
+    const updatedBrainrots = computeUnlockedBrainrots(currentState.brainrots, currentState.netWorth);
+    if (updatedBrainrots) {
+      currentState.marketEngine.brainrots = updatedBrainrots;
+      set({ brainrots: updatedBrainrots });
     }
   },
 
@@ -232,10 +295,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const brainrots = result.brainrots;
     const timeState = engine.timeEngine.getState();
 
-    // Calculate portfolio values
+    // Calculate portfolio values (including short positions)
     const holdings = state.holdings;
     let totalInvestmentValue = 0;
     let totalInvested = 0;
+    let shortPandL = 0;
     let bestAsset = '';
     let worstAsset = '';
     let bestReturn = -Infinity;
@@ -245,21 +309,60 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     for (const h of holdings) {
       const asset = brainrots.find(b => b.id === h.assetId);
-      if (asset && h.quantity > 0) {
-        const value = asset.currentPrice * h.quantity;
-        const invested = h.averagePurchasePrice * h.quantity;
-        totalInvestmentValue += value;
-        totalInvested += invested;
-        const ret = (value - invested) / invested;
-        if (ret > bestReturn) { bestReturn = ret; bestAsset = asset.name; }
-        if (ret < worstReturn) { worstReturn = ret; worstAsset = asset.name; }
-        if (value > largestValue) { largestValue = value; largestHolding = asset.name; }
+      if (asset) {
+        // Long position
+        if (h.quantity > 0) {
+          const value = asset.currentPrice * h.quantity;
+          const invested = h.averagePurchasePrice * h.quantity;
+          totalInvestmentValue += value;
+          totalInvested += invested;
+          const ret = (value - invested) / invested;
+          if (ret > bestReturn) { bestReturn = ret; bestAsset = asset.name; }
+          if (ret < worstReturn) { worstReturn = ret; worstAsset = asset.name; }
+          if (value > largestValue) { largestValue = value; largestHolding = asset.name; }
+        }
+        // Short position
+        if (h.shortQuantity > 0) {
+          const shortValue = (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
+          shortPandL += shortValue;
+          if (shortValue > bestReturn) { bestReturn = shortValue; bestAsset = asset.name + ' (Short)'; }
+          if (shortValue < worstReturn) { worstReturn = shortValue; worstAsset = asset.name + ' (Short)'; }
+          if (Math.abs(shortValue) > largestValue) { largestValue = Math.abs(shortValue); largestHolding = asset.name + ' (Short)'; }
+        }
       }
     }
 
-    const netWorth = state.cash + totalInvestmentValue;
-    const unrealizedProfit = totalInvestmentValue - totalInvested;
+    const netWorth = state.cash + totalInvestmentValue + shortPandL;
+    const unrealizedProfit = totalInvestmentValue - totalInvested + shortPandL;
     const totalReturn = state.realizedProfit + unrealizedProfit;
+
+    // ── Daily Holding Cost ──
+    // Pay ₹5 per unique asset held (long OR short) per day
+    let holdingCosts = 0;
+    if (timeState.currentDay !== state.currentDay) {
+      const activeAssets = new Set<string>();
+      for (const h of holdings) {
+        if (h.quantity > 0 || h.shortQuantity > 0) {
+          activeAssets.add(h.assetId);
+        }
+      }
+      holdingCosts = activeAssets.size * 5;
+    }
+
+    // ── Short Borrow Fee ──
+    // Pay 0.05% of short position value per tick
+    let shortBorrowFees = 0;
+    for (const h of holdings) {
+      if (h.shortQuantity > 0) {
+        const asset = brainrots.find(b => b.id === h.assetId);
+        if (asset) {
+          shortBorrowFees += Math.floor(asset.currentPrice * h.shortQuantity * 0.0005);
+        }
+      }
+    }
+    shortBorrowFees = Math.min(shortBorrowFees, state.cash * 0.5); // Cap at 50% of cash to prevent instant bankruptcy
+
+    const totalFees = holdingCosts + shortBorrowFees;
 
     // XP calculation
     let xpGain = 0;
@@ -275,7 +378,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Calculate level
     let newLevel = state.level;
     let newRankIndex = state.rankIndex;
-    const xpForNextLevel = state.level * 100;
+    const xpForNextLevel = state.level * 150 + 50;
     if (newXp >= xpForNextLevel) {
       newLevel++;
     }
@@ -288,12 +391,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
-    // Check missions
+    // Check missions (track reward cash separately instead of mutating state.cash)
+    let missionRewards = 0;
     const updatedMissions = state.missions.map(m => {
       if (m.completed) return m;
       const completed = m.condition(get());
       if (completed) {
-        state.cash += m.reward;
+        missionRewards += m.reward;
         return { ...m, completed: true };
       }
       return m;
@@ -308,6 +412,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       return a;
     });
+
+    // Check for newly unlocked assets based on net worth
+    const updatedBrainrotsUnlock = computeUnlockedBrainrots(brainrots, netWorth);
+    const finalBrainrots = updatedBrainrotsUnlock ?? brainrots;
+    // Keep the engine in sync
+    if (updatedBrainrotsUnlock) {
+      engine.brainrots = updatedBrainrotsUnlock;
+    }
 
     // Add new news
     const updatedNews = [...state.news];
@@ -337,8 +449,55 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }));
     const updatedWhaleTrades = [...newWhaleTrades, ...state.recentWhaleTrades].slice(0, 50);
 
+    const cashAfterFees = Math.max(0, state.cash + missionRewards - totalFees);
+
+    // ── Bankruptcy Check ──
+    // If net worth <= 0 and we have holdings, force liquidate everything
+    // Use the fee-adjusted net worth for the bankruptcy check
+    const netWorthAfterFees = cashAfterFees + totalInvestmentValue + shortPandL;
+    let forceLiquidated = false;
+    let resultHoldings = state.holdings;
+    let resultCash = cashAfterFees;
+    let resultBankruptcyCount = state.bankruptcyCount;
+    let resultRealizedProfit = state.realizedProfit;
+
+    if (netWorthAfterFees <= 0 && holdings.some(h => h.quantity > 0 || h.shortQuantity > 0)) {
+      // Force liquidate all positions at current market prices
+      forceLiquidated = true;
+      let liquidationValue = 0;
+      for (const h of holdings) {
+        const asset = brainrots.find(b => b.id === h.assetId);
+        if (asset) {
+          if (h.quantity > 0) {
+            const saleValue = asset.currentPrice * h.quantity;
+            const fee = saleValue * BROKERAGE_FEE_RATE;
+            const netSale = saleValue - fee;
+            resultRealizedProfit += netSale - (h.averagePurchasePrice * h.quantity);
+            liquidationValue += netSale;
+          }
+          if (h.shortQuantity > 0) {
+            // Force cover shorts at current price (loss if price went up)
+            const buybackCost = asset.currentPrice * h.shortQuantity;
+            const fee = buybackCost * BROKERAGE_FEE_RATE;
+            const totalCost = buybackCost + fee;
+            const shortPnl = (h.averageShortPrice * h.shortQuantity) - buybackCost - fee;
+            resultRealizedProfit += shortPnl;
+            liquidationValue -= totalCost;
+          }
+        }
+      }
+      resultCash = Math.max(0, resultCash + liquidationValue);
+      resultHoldings = [];
+      resultBankruptcyCount++;
+    }
+
     set({
-      brainrots,
+      cash: resultCash,
+      holdings: resultHoldings,
+      realizedProfit: resultRealizedProfit,
+      taxesPaid: state.taxesPaid,
+      bankruptcyCount: resultBankruptcyCount,
+      brainrots: [...finalBrainrots],
       news: updatedNews,
       rotterPosts: updatedRotterPosts,
       totalTicks: timeState.totalTicks,
@@ -349,7 +508,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       globalSentiment: result.globalSentiment,
       ticksUntilClose: timeState.ticksUntilClose,
       ticksUntilOpen: timeState.ticksUntilOpen,
-      netWorth,
+      netWorth: netWorthAfterFees < 0 ? 0 : netWorthAfterFees,
       totalInvested,
       unrealizedProfit,
       totalReturn,
@@ -365,6 +524,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       whales: engine.whaleEngine.getWhales(),
       recentWhaleTrades: updatedWhaleTrades,
     });
+
+    // Auto-save after tick
+    if (totalFees > 0 || forceLiquidated) {
+      saveGame(get());
+    }
   },
 
   setSpeed: (speed) => set({ speed }),
@@ -400,6 +564,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       assetId,
       quantity: newQuantity,
       averagePurchasePrice: newAvgPrice,
+      shortQuantity: existingHolding?.shortQuantity ?? 0,
+      averageShortPrice: existingHolding?.averageShortPrice ?? 0,
     });
 
     const trade: PlayerTrade = {
@@ -442,16 +608,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const price = asset.currentPrice;
     const totalValue = price * quantity;
-    const fee = totalValue * BROKERAGE_FEE_RATE;
+    const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
+    const fee = totalValue * feeRate;
     const netValue = totalValue - fee;
 
     const costBasis = holding.averagePurchasePrice * quantity;
-    const profitLoss = netValue - costBasis;
+    let profitLoss = netValue - costBasis;
+
+    // Capital gains tax: 15% of profit when selling at a gain
+    let capitalGainsTax = 0;
+    if (profitLoss > 0) {
+      capitalGainsTax = Math.floor(profitLoss * 0.15);
+      profitLoss -= capitalGainsTax;
+    }
 
     const newQuantity = holding.quantity - quantity;
     const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
     if (newQuantity > 0) {
-      newHoldings.push({ ...holding, quantity: newQuantity });
+      newHoldings.push({
+        ...holding,
+        quantity: newQuantity,
+        shortQuantity: holding.shortQuantity ?? 0,
+        averageShortPrice: holding.averageShortPrice ?? 0,
+      });
     }
 
     const trade: PlayerTrade = {
@@ -472,22 +651,159 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const newRealizedProfit = state.realizedProfit + profitLoss;
 
-    // XP for profitable trades
+    // XP for profitable trades (reduced)
     let xpGain = 0;
     if (profitLoss > 0) {
-      xpGain = Math.min(100, Math.floor(profitLoss / 100));
+      xpGain = Math.min(50, Math.floor(profitLoss / 200));
       if (state.settings.soundEnabled) playCashSound();
     }
 
     set({
+      cash: state.cash + netValue - capitalGainsTax,
+      holdings: newHoldings,
+      realizedProfit: newRealizedProfit - capitalGainsTax,
+      taxesPaid: state.taxesPaid + capitalGainsTax,
+      trades: [trade, ...state.trades].slice(0, 500),
+      xp: state.xp + xpGain,
+    });
+
+    if (state.settings.soundEnabled) playTradeSound('Sell');
+    saveGame(get());
+    return true;
+  },
+
+  shortSellShares: (assetId, quantity) => {
+    const state = get();
+    if (state.marketStatus !== 'Open') return false;
+    if (quantity <= 0 || !Number.isFinite(quantity)) return false;
+
+    const asset = state.brainrots.find(b => b.id === assetId);
+    if (!asset) return false;
+
+    const price = asset.currentPrice;
+    const totalValue = price * quantity;
+    const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
+    const fee = totalValue * feeRate;
+    const netValue = totalValue - fee;
+
+    // Margin requirement: need 100% of sale value in cash (higher risk)
+    const marginRequired = totalValue;
+    if (state.cash < marginRequired) return false;
+
+    // Track short position
+    const existingHolding = state.holdings.find(h => h.assetId === assetId);
+    const newShortQty = (existingHolding?.shortQuantity ?? 0) + quantity;
+    const newAvgShortPrice = existingHolding?.shortQuantity && existingHolding.shortQuantity > 0
+      ? (existingHolding.averageShortPrice * existingHolding.shortQuantity + price * quantity) / newShortQty
+      : price;
+
+    const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
+    newHoldings.push({
+      assetId,
+      quantity: existingHolding?.quantity ?? 0,
+      averagePurchasePrice: existingHolding?.averagePurchasePrice ?? 0,
+      shortQuantity: newShortQty,
+      averageShortPrice: newAvgShortPrice,
+    });
+
+    // Short P&L is negative when price goes up (we owe more)
+    // At open, P&L is 0
+    const trade: PlayerTrade = {
+      id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      assetId,
+      ticker: asset.ticker,
+      type: 'Short',
+      quantity,
+      price,
+      brokerageFee: fee,
+      totalValue: netValue,
+      profitLoss: 0,
+      date: state.totalTicks,
+      day: state.currentDay,
+    };
+
+    state.marketEngine.recordPlayerSell(assetId, quantity);
+
+    set({
       cash: state.cash + netValue,
+      holdings: newHoldings,
+      trades: [trade, ...state.trades].slice(0, 500),
+    });
+
+    if (state.settings.soundEnabled) playTradeSound('Sell');
+    saveGame(get());
+    return true;
+  },
+
+  buyToCover: (assetId, quantity) => {
+    const state = get();
+    if (state.marketStatus !== 'Open') return false;
+    if (quantity <= 0 || !Number.isFinite(quantity)) return false;
+
+    const asset = state.brainrots.find(b => b.id === assetId);
+    if (!asset) return false;
+
+    const holding = state.holdings.find(h => h.assetId === assetId);
+    if (!holding || !holding.shortQuantity || holding.shortQuantity < quantity) return false;
+
+    const price = asset.currentPrice;
+    const totalCost = price * quantity;
+    const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
+    const fee = totalCost * feeRate;
+    const totalWithFee = totalCost + fee;
+
+    if (totalWithFee > state.cash) return false;
+
+    // P&L for covering: shortAvgPrice - coverPrice (positive when price dropped)
+    const proceedsAtOpen = holding.averageShortPrice * quantity;
+    const costToClose = totalCost;
+    const profitLoss = proceedsAtOpen - costToClose - fee; // Fee eats into profit
+
+    const newShortQty = holding.shortQuantity - quantity;
+    const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
+    if (newShortQty > 0 || (holding.quantity ?? 0) > 0) {
+      newHoldings.push({
+        assetId,
+        quantity: holding.quantity ?? 0,
+        averagePurchasePrice: holding.averagePurchasePrice ?? 0,
+        shortQuantity: newShortQty,
+        averageShortPrice: holding.averageShortPrice,
+      });
+    }
+
+    const trade: PlayerTrade = {
+      id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      assetId,
+      ticker: asset.ticker,
+      type: 'Cover',
+      quantity,
+      price,
+      brokerageFee: fee,
+      totalValue: totalWithFee,
+      profitLoss,
+      date: state.totalTicks,
+      day: state.currentDay,
+    };
+
+    state.marketEngine.recordPlayerBuy(assetId, quantity);
+
+    const newRealizedProfit = state.realizedProfit + profitLoss;
+
+    let xpGain = 0;
+    if (profitLoss > 0) {
+      xpGain = Math.min(50, Math.floor(profitLoss / 200));
+      if (state.settings.soundEnabled) playCashSound();
+    }
+
+    set({
+      cash: state.cash - totalWithFee,
       holdings: newHoldings,
       realizedProfit: newRealizedProfit,
       trades: [trade, ...state.trades].slice(0, 500),
       xp: state.xp + xpGain,
     });
 
-    if (state.settings.soundEnabled) playTradeSound('Sell');
+    if (state.settings.soundEnabled) playTradeSound('Buy');
     saveGame(get());
     return true;
   },
@@ -524,13 +840,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   prestige: () => {
     const state = get();
-    if (state.netWorth < 1000000000) return; // Need ₹1 billion
+    if (state.netWorth < 10000000000) return; // Need ₹10 billion (harder)
 
-    // Calculate Golden Brain Cells
-    const cellsEarned = Math.floor(Math.log10(state.netWorth / 10000000) * 10) + 1;
+    // Calculate Golden Brain Cells (more gradual)
+    const cellsEarned = Math.max(1, Math.floor(Math.log10(state.netWorth / 50000000) * 5) + 1);
 
     set({
-      cash: 10000 + (state.prestigeUpgrades.find(u => u.id === 'more_starting_cash')?.currentLevel ?? 0) * 5000,
+      cash: 2500 + (state.prestigeUpgrades.find(u => u.id === 'more_starting_cash')?.currentLevel ?? 0) * 2500,
       holdings: [],
       netWorth: 10000,
       totalInvested: 0,
@@ -554,6 +870,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         currentPrice: b.startingPrice,
         allTimeHigh: b.startingPrice,
         allTimeLow: b.startingPrice,
+        dayOpenPrice: b.startingPrice,
         dailyChange: 0,
         momentum: 0,
         volume: b.volume,
@@ -610,7 +927,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Apply save data
       set({
         cash: data.cash ?? 10000,
-        holdings: data.holdings ?? [],
+        holdings: data.holdings
+          ? data.holdings.map((h: any) => ({
+              ...h,
+              shortQuantity: h.shortQuantity ?? 0,
+              averageShortPrice: h.averageShortPrice ?? 0,
+            }))
+          : [],
         realizedProfit: data.realizedProfit ?? 0,
         trades: data.trades ?? [],
         currentDay: data.currentDay ?? 1,
@@ -619,18 +942,43 @@ export const useGameStore = create<GameStore>((set, get) => ({
         level: data.level ?? 1,
         rankIndex: data.rankIndex ?? 0,
         rank: RANK_ORDER[data.rankIndex] || 'Unemployed Scroller',
-        brainrots: data.brainrots ?? BRAINROTS,
-        news: data.news ?? [],
-        rotterPosts: data.rotterPosts ?? [],
-        whales: data.whales ?? WHALES,
+      brainrots: data.brainrots
+        ? data.brainrots.map((b: any) => ({
+            ...b,
+            candles: b.candles ?? [],
+            phase: b.phase ?? 'accumulation',
+            phaseTicksRemaining: b.phaseTicksRemaining ?? 60,
+            trendStrength: b.trendStrength ?? 0,
+            dayOpenPrice: b.dayOpenPrice ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleOpen: b.candleOpen ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleHigh: b.candleHigh ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleLow: b.candleLow ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleTicks: b.candleTicks ?? 0,
+          }))
+        : BRAINROTS,
+      news: data.news ?? [],
+      rotterPosts: data.rotterPosts ?? [],
+      whales: data.whales ?? WHALES,
         recentWhaleTrades: data.recentWhaleTrades ?? [],
-        missions: data.missions ?? MISSIONS,
-        achievements: data.achievements ?? ACHIEVEMENTS,
+        missions: data.missions
+          ? data.missions.map((m: any) => {
+              const template = MISSIONS.find(t => t.id === m.id);
+              return template ? { ...template, ...m } : { ...m, condition: () => false };
+            })
+          : MISSIONS,
+        achievements: data.achievements
+          ? data.achievements.map((a: any) => {
+              const template = ACHIEVEMENTS.find(t => t.id === a.id);
+              return template ? { ...template, ...a } : { ...a, condition: () => false };
+            })
+          : ACHIEVEMENTS,
         upgrades: data.upgrades ?? createInitialUpgrades(),
         prestigeUpgrades: data.prestigeUpgrades ?? createInitialPrestigeUpgrades(),
         goldenBrainCells: data.goldenBrainCells ?? 0,
         prestigeLevel: data.prestigeLevel ?? 0,
         prestigeMultiplier: data.prestigeMultiplier ?? 1,
+        taxesPaid: data.taxesPaid ?? 0,
+        bankruptcyCount: data.bankruptcyCount ?? 0,
         settings: data.settings ?? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false },
       });
       return true;
@@ -670,6 +1018,8 @@ function buildSaveData(state: GameStore) {
     goldenBrainCells: state.goldenBrainCells,
     prestigeLevel: state.prestigeLevel,
     prestigeMultiplier: state.prestigeMultiplier,
+    taxesPaid: state.taxesPaid,
+    bankruptcyCount: state.bankruptcyCount,
     settings: state.settings,
     speed: state.speed,
     marketCondition: state.marketCondition,
@@ -696,7 +1046,13 @@ function loadGame(): Partial<GameState> | null {
 
     return {
       cash: data.cash ?? 10000,
-      holdings: data.holdings ?? [],
+      holdings: data.holdings
+        ? data.holdings.map((h: any) => ({
+            ...h,
+            shortQuantity: h.shortQuantity ?? 0,
+            averageShortPrice: h.averageShortPrice ?? 0,
+          }))
+        : [],
       realizedProfit: data.realizedProfit ?? 0,
       trades: data.trades ?? [],
       currentDay: data.currentDay ?? 1,
@@ -705,18 +1061,43 @@ function loadGame(): Partial<GameState> | null {
       level: data.level ?? 1,
       rankIndex: data.rankIndex ?? 0,
       rank: RANK_ORDER[data.rankIndex] || 'Unemployed Scroller',
-      brainrots: data.brainrots ?? BRAINROTS,
+      brainrots: data.brainrots
+        ? data.brainrots.map((b: any) => ({
+            ...b,
+            candles: b.candles ?? [],
+            phase: b.phase ?? 'accumulation',
+            phaseTicksRemaining: b.phaseTicksRemaining ?? 60,
+            trendStrength: b.trendStrength ?? 0,
+            dayOpenPrice: b.dayOpenPrice ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleOpen: b.candleOpen ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleHigh: b.candleHigh ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleLow: b.candleLow ?? b.currentPrice ?? b.startingPrice ?? 0,
+            candleTicks: b.candleTicks ?? 0,
+          }))
+        : BRAINROTS,
       news: data.news ?? [],
       rotterPosts: data.rotterPosts ?? [],
       whales: data.whales ?? WHALES,
       recentWhaleTrades: data.recentWhaleTrades ?? [],
-      missions: data.missions ?? MISSIONS.map(m => ({ ...m })),
-      achievements: data.achievements ?? ACHIEVEMENTS.map(a => ({ ...a })),
+      missions: data.missions
+        ? data.missions.map((m: any) => {
+            const template = MISSIONS.find(t => t.id === m.id);
+            return template ? { ...template, ...m } : { ...m, condition: () => false };
+          })
+        : MISSIONS.map(m => ({ ...m })),
+      achievements: data.achievements
+        ? data.achievements.map((a: any) => {
+            const template = ACHIEVEMENTS.find(t => t.id === a.id);
+            return template ? { ...template, ...a } : { ...a, condition: () => false };
+          })
+        : ACHIEVEMENTS.map(a => ({ ...a })),
       upgrades: data.upgrades ?? createInitialUpgrades(),
       prestigeUpgrades: data.prestigeUpgrades ?? createInitialPrestigeUpgrades(),
       goldenBrainCells: data.goldenBrainCells ?? 0,
       prestigeLevel: data.prestigeLevel ?? 0,
       prestigeMultiplier: data.prestigeMultiplier ?? 1,
+      taxesPaid: data.taxesPaid ?? 0,
+      bankruptcyCount: data.bankruptcyCount ?? 0,
       settings: data.settings ?? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false },
       marketCondition: data.marketCondition ?? 'Normal',
       globalSentiment: data.globalSentiment ?? 50,

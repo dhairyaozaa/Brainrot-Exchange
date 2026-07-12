@@ -146,9 +146,11 @@ export function Chart({ data, height = 100, color = '#00ff88', mode = 'line' }: 
     );
   }
 
-  // Build candlestick data from prices
+  // Build candlestick data with adaptive bin sizing
+  // Aim for ~40-60 candles regardless of data length
   const candles = useMemo(() => {
-    const binSize = 5;
+    const targetCandles = 50;
+    const binSize = Math.max(1, Math.floor(data.length / targetCandles));
     const result: CandleData[] = [];
     for (let i = 0; i < data.length; i += binSize) {
       const slice = data.slice(i, i + binSize);

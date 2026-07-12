@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { Chart } from './Chart';
 
-export function BrainrotIndex() {
+export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const brainrots = useGameStore(s => s.brainrots);
   const marketCondition = useGameStore(s => s.marketCondition);
   const globalSentiment = useGameStore(s => s.globalSentiment);
@@ -13,7 +13,10 @@ export function BrainrotIndex() {
       if (!asset.unlocked) continue;
       const existing = catMap.get(asset.category) || { assets: [], totalChange: 0 };
       existing.assets.push(asset);
-      existing.totalChange += asset.dailyChange;
+      // Compute day-level change from open
+      existing.totalChange += asset.dayOpenPrice > 0
+        ? (asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice
+        : 0;
       catMap.set(asset.category, existing);
     }
     return Array.from(catMap.entries()).map(([name, data]) => ({
@@ -38,12 +41,20 @@ export function BrainrotIndex() {
   }, [brainrots]);
 
   const gainers = useMemo(() =>
-    [...brainrots].filter(b => b.unlocked).sort((a, b) => b.dailyChange - a.dailyChange).slice(0, 5),
+    [...brainrots].filter(b => b.unlocked).sort((a, b) => {
+      const aChange = a.dayOpenPrice > 0 ? (a.currentPrice - a.dayOpenPrice) / a.dayOpenPrice : 0;
+      const bChange = b.dayOpenPrice > 0 ? (b.currentPrice - b.dayOpenPrice) / b.dayOpenPrice : 0;
+      return bChange - aChange;
+    }).slice(0, 5),
     [brainrots]
   );
 
   const losers = useMemo(() =>
-    [...brainrots].filter(b => b.unlocked).sort((a, b) => a.dailyChange - b.dailyChange).slice(0, 5),
+    [...brainrots].filter(b => b.unlocked).sort((a, b) => {
+      const aChange = a.dayOpenPrice > 0 ? (a.currentPrice - a.dayOpenPrice) / a.dayOpenPrice : 0;
+      const bChange = b.dayOpenPrice > 0 ? (b.currentPrice - b.dayOpenPrice) / b.dayOpenPrice : 0;
+      return aChange - bChange;
+    }).slice(0, 5),
     [brainrots]
   );
 
@@ -91,13 +102,13 @@ export function BrainrotIndex() {
           <h3 className="text-sm font-bold text-brainrot-accent mb-2">Top Gainers</h3>
           <div className="space-y-1">
             {gainers.map(asset => (
-              <div key={asset.id} className="flex items-center justify-between text-xs">
+              <div key={asset.id} className="flex items-center justify-between text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors" onClick={() => onViewAsset?.(asset.id)}>
                 <div className="flex items-center gap-1">
                   <span>{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold">{asset.ticker}</span>
+                  <span className="text-brainrot-text font-bold hover:text-brainrot-accent transition-colors">{asset.ticker}</span>
                 </div>
                 <span className="text-brainrot-accent font-mono">
-                  ▲ {(asset.dailyChange * 100).toFixed(2)}%
+                  ▲ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(2) : '0.00'}%
                 </span>
               </div>
             ))}
@@ -108,13 +119,13 @@ export function BrainrotIndex() {
           <h3 className="text-sm font-bold text-brainrot-red mb-2">Top Losers</h3>
           <div className="space-y-1">
             {losers.map(asset => (
-              <div key={asset.id} className="flex items-center justify-between text-xs">
+              <div key={asset.id} className="flex items-center justify-between text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors" onClick={() => onViewAsset?.(asset.id)}>
                 <div className="flex items-center gap-1">
                   <span>{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold">{asset.ticker}</span>
+                  <span className="text-brainrot-text font-bold hover:text-brainrot-red transition-colors">{asset.ticker}</span>
                 </div>
                 <span className="text-brainrot-red font-mono">
-                  ▼ {(asset.dailyChange * 100).toFixed(2)}%
+                  ▼ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(2) : '0.00'}%
                 </span>
               </div>
             ))}

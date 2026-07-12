@@ -18,89 +18,98 @@ export class PriceEngine {
     marketCondition: MarketCondition,
     activeNews: NewsStory[],
     activeRumourStrength: number,
-    whalePressure: number,
+    whaleNewsPressure: number,
     supplyDemandPressure: number,
     tick: number,
+    phaseTrendBias: number,
+    phaseVolMultiplier: number,
+    playerMarketImpact: number = 0,
+    intradayBias: number = 0,
   ): number {
     const seed = tick * 9973 + this.baseSeed;
 
-    // Base trend - small drift based on asset's inherent direction
-    const baseTrend = asset.momentum * 0.001;
+    // ── Phase-driven trend (dominant factor) ──
+    // Reduced from original to make trends less guaranteed profitable
+    const trendEffect = phaseTrendBias * 0.85;
 
-    // Global sentiment effect
+    // Small wick noise on top of trend (for candle shadows)
+    const wickNoise = (this.seededRandom(seed + 2) - 0.5) * asset.baseVolatility * phaseVolMultiplier * 0.12;
+
+    // Global sentiment effect (stronger)
     const sentimentEffect = (globalSentiment - 50) * 0.0005;
 
-    // Category trend - simplified
-    const categoryTrend = (this.seededRandom(seed + 1) - 0.5) * 0.002;
-
     // Hype effect
-    const hypeEffect = (asset.hype - 10) * 0.001;
+    const hypeEffect = (asset.hype - 10) * 0.0004;
 
     // Popularity effect
-    const popularityEffect = (asset.popularity - 50) * 0.0003;
+    const popularityEffect = (asset.popularity - 50) * 0.00015;
 
     // News effects
     let newsEffect = 0;
     for (const news of activeNews) {
       if (news.relatedAssets.includes(asset.id) || news.relatedCategories.includes(asset.category)) {
-        newsEffect += news.effectStrength * 0.01;
+        newsEffect += news.effectStrength * 0.008;
       }
     }
 
     // Rumour effect
-    const rumourEffect = activeRumourStrength * 0.005;
+    const rumourEffect = activeRumourStrength * 0.004;
 
-    // Supply and demand
-    const supplyDemandEffect = supplyDemandPressure * 0.002;
+    // Supply and demand (stronger impact)
+    const supplyDemandEffect = supplyDemandPressure * 0.004;
 
     // Whale activity effect
-    const whaleEffect = whalePressure * 0.003;
+    const whaleEffect = whaleNewsPressure * 0.002;
 
-    // Momentum (continuation effect)
-    const momentumEffect = asset.momentum * 0.002;
+    // Player market impact (new - large trades affect price)
+    const playerImpactEffect = playerMarketImpact * 0.001;
 
-    // Mean reversion (pull back to starting price range)
+    // Momentum (small continuation effect)
+    const momentumEffect = asset.momentum * 0.0008;
+
+    // Mean reversion (stronger pull back to starting price range)
     const meanReversion = (asset.startingPrice - asset.currentPrice) / asset.currentPrice * 0.001;
-    const meanReversionCapped = Math.max(-0.01, Math.min(0.01, meanReversion));
+    const meanReversionCapped = Math.max(-0.008, Math.min(0.008, meanReversion));
 
-    // Overvaluation pressure
+    // Overvaluation pressure (stronger)
     const overvaluation = (asset.currentPrice / asset.allTimeHigh) - 0.5;
-    const overvaluationPressure = overvaluation * 0.001;
+    const overvaluationPressure = overvaluation * 0.0008;
 
-    // Controlled random noise based on volatility
-    const noise = (this.seededRandom(seed + 2) - 0.5) * asset.currentVolatility * 2;
+    // Intraday phase bias (randomized trends at day start/mid/end)
+    const intradayEffect = intradayBias;
 
-    // Market condition effects
+    // Market condition effects (stronger)
     let marketEffect = 0;
     switch (marketCondition) {
-      case 'Bull Market': marketEffect = 0.002; break;
+      case 'Bull Market': marketEffect = 0.0008; break;
       case 'Bear Market': marketEffect = -0.002; break;
-      case 'Flash Crash': marketEffect = -0.01; break;
-      case 'Meme Rally': marketEffect = 0.005; break;
-      case 'Market Bubble': marketEffect = 0.003; break;
-      case 'Correction': marketEffect = -0.001; break;
-      case 'Recession': marketEffect = -0.0015; break;
-      case 'Short Squeeze': marketEffect = 0.008; break;
+      case 'Flash Crash': marketEffect = -0.012; break;
+      case 'Meme Rally': marketEffect = 0.0025; break;
+      case 'Market Bubble': marketEffect = 0.0015; break;
+      case 'Correction': marketEffect = -0.0015; break;
+      case 'Recession': marketEffect = -0.002; break;
+      case 'Short Squeeze': marketEffect = 0.003; break;
       default: marketEffect = 0;
     }
 
-    let totalChange = baseTrend
+    let totalChange = trendEffect
+      + wickNoise
       + sentimentEffect
-      + categoryTrend
       + hypeEffect
       + popularityEffect
       + newsEffect
       + rumourEffect
       + supplyDemandEffect
       + whaleEffect
+      + playerImpactEffect
       + momentumEffect
       + meanReversionCapped
       - overvaluationPressure
-      + noise
-      + marketEffect;
+      + marketEffect
+      + intradayEffect;
 
     // Clamp the change to prevent extreme single-tick movements
-    const maxChange = asset.currentVolatility * 3;
+    const maxChange = (asset.baseVolatility * phaseVolMultiplier) * 2.5;
     totalChange = Math.max(-maxChange, Math.min(maxChange, totalChange));
 
     return totalChange;
@@ -141,30 +150,30 @@ export class PriceEngine {
 
   updateHype(currentHype: number, newsEffect: number, rumourEffect: number): number {
     let newHype = currentHype;
-    // Hype decays naturally
-    newHype *= 0.997;
+    // Hype decays naturally (faster decay)
+    newHype *= 0.995;
     // News and rumours add hype
-    newHype += newsEffect * 5;
-    newHype += rumourEffect * 3;
+    newHype += newsEffect * 4;
+    newHype += rumourEffect * 2;
     // Clamp
     return Math.max(0, Math.min(100, newHype));
   }
 
   updatePopularity(currentPopularity: number, priceChange: number): number {
     // Big price movements attract attention
-    const attention = Math.abs(priceChange) * 10;
+    const attention = Math.abs(priceChange) * 8;
     let newPopularity = currentPopularity * 0.999 + attention * 0.001;
     return Math.max(0, Math.min(100, newPopularity));
   }
 
   updatePublicTrust(currentTrust: number, newsEffect: number): number {
     let newTrust = currentTrust;
-    // Negative news reduces trust
-    if (newsEffect < -0.3) {
-      newTrust -= Math.abs(newsEffect) * 5;
+    // Negative news reduces trust (stronger effect)
+    if (newsEffect < -0.2) {
+      newTrust -= Math.abs(newsEffect) * 6;
     }
     // Trust recovers slowly
-    newTrust += 0.01;
+    newTrust += 0.005;
     return Math.max(0, Math.min(100, newTrust));
   }
 }

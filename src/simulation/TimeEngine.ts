@@ -1,7 +1,7 @@
 export class TimeEngine {
-  // With 5-second ticks, 60 ticks = 300s = 5 trading minutes per day
-  private ticksPerDay = 60;
-  private closeLength = 50;
+  // With 5-second ticks, 180 ticks + 60 close = 240 ticks ≈ 20 min per day cycle at 1x speed
+  private ticksPerDay = 180;
+  private closeLength = 60;
   private totalTicks = 0;
   private currentDay = 1;
   private currentWeek = 1;
@@ -56,6 +56,9 @@ export class TimeEngine {
   }
 
   getState() {
+    const ticksInDay = this.marketStatus === 'Open'
+      ? this.ticksPerDay - this.ticksUntilClose
+      : this.ticksPerDay; // Day is fully over when market is closed
     return {
       totalTicks: this.totalTicks,
       currentDay: this.currentDay,
@@ -63,6 +66,7 @@ export class TimeEngine {
       ticksUntilClose: this.ticksUntilClose,
       ticksUntilOpen: this.ticksUntilOpen,
       marketStatus: this.marketStatus,
+      ticksInDay,
     };
   }
 }

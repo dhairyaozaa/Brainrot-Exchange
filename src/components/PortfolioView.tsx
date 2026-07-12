@@ -22,7 +22,7 @@ function PieTooltip({ active, payload }: any) {
   );
 }
 
-export function PortfolioView() {
+export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const cash = useGameStore(s => s.cash);
   const holdings = useGameStore(s => s.holdings);
   const brainrots = useGameStore(s => s.brainrots);
@@ -45,7 +45,23 @@ export function PortfolioView() {
         const costBasis = h.averagePurchasePrice * h.quantity;
         const profit = currentValue - costBasis;
         const returnPct = costBasis > 0 ? ((currentValue - costBasis) / costBasis) * 100 : 0;
-        return { ...h, asset, currentValue, costBasis, profit, returnPct };
+        return { ...h, asset, currentValue, costBasis, profit, returnPct, type: 'long' as const };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null),
+    [holdings, brainrots]
+  );
+
+  const shortPositions = useMemo(() =>
+    holdings
+      .filter(h => h.shortQuantity > 0)
+      .map(h => {
+        const asset = brainrots.find(b => b.id === h.assetId);
+        if (!asset) return null;
+        const liability = asset.currentPrice * h.shortQuantity;
+        const proceedsAtOpen = h.averageShortPrice * h.shortQuantity;
+        const unrealizedPnl = proceedsAtOpen - liability;
+        const returnPct = h.averageShortPrice > 0 ? ((h.averageShortPrice - asset.currentPrice) / h.averageShortPrice) * 100 : 0;
+        return { ...h, asset, currentValue: liability, costBasis: proceedsAtOpen, profit: unrealizedPnl, returnPct, type: 'short' as const };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null),
     [holdings, brainrots]
@@ -84,7 +100,14 @@ export function PortfolioView() {
         const newQty = existing.qty + trade.quantity;
         const newAvg = (existing.avgPrice * existing.qty + trade.price * trade.quantity) / newQty;
         runningHoldings[trade.assetId] = { qty: newQty, avgPrice: newAvg };
+      } else if (trade.type === 'Short') {
+        // Short: cash is credited, no long holding change
+        runningCash += trade.totalValue;
+      } else if (trade.type === 'Cover') {
+        // Cover: cash is debited, no long holding change
+        runningCash -= trade.totalValue;
       } else {
+        // Regular Sell: cash credited, reduce long holding
         runningCash += trade.totalValue;
         const existing = runningHoldings[trade.assetId];
         if (existing) {
@@ -246,21 +269,21 @@ export function PortfolioView() {
         </div>
       </div>
 
-      {/* Holdings */}
+      {/* Long Holdings */}
       <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
-        <h3 className="text-sm font-bold text-brainrot-text mb-2">Holdings ({activeHoldings.length})</h3>
+        <h3 className="text-sm font-bold text-brainrot-accent mb-2">📈 Long Positions ({activeHoldings.length})</h3>
         {activeHoldings.length === 0 ? (
-          <div className="text-center py-4 text-brainrot-muted text-sm">No holdings yet. Start trading!</div>
+          <div className="text-center py-4 text-brainrot-muted text-sm">No long holdings yet. Buy shares!</div>
         ) : (
           <div className="space-y-2">
             {activeHoldings.map(h => {
               return (
                 <div key={h.assetId} className="flex items-center justify-between bg-brainrot-dark rounded p-2 text-sm">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => onViewAsset?.(h.assetId)}>
                     <span className="text-lg">{h.asset.icon}</span>
                     <div>
-                      <div className="font-bold text-brainrot-text">{h.asset.ticker}</div>
-                      <div className="text-xs text-brainrot-muted">{h.quantity} shares</div>
+                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors">{h.asset.ticker}</div>
+                      <div className="text-xs text-brainrot-muted">{h.quantity} shares @ ₹{h.averagePurchasePrice.toFixed(2)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -277,6 +300,46 @@ export function PortfolioView() {
                       </div>
                     </div>
                     <MiniChart data={h.asset.historicalPrices.slice(-50)} color={h.profit >= 0 ? '#00ff88' : '#ff3355'} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Short Positions */}
+      <div className="bg-brainrot-card border border-brainrot-orange/50 rounded-lg p-3">
+        <h3 className="text-sm font-bold text-brainrot-orange mb-2">📉 Short Positions ({shortPositions.length})</h3>
+        {shortPositions.length === 0 ? (
+          <div className="text-center py-4 text-brainrot-muted text-sm">No short positions. Short stocks you think will drop!</div>
+        ) : (
+          <div className="space-y-2">
+            {shortPositions.map(h => {
+              const isProfitable = h.profit > 0;
+              return (
+                <div key={h.assetId} className="flex items-center justify-between bg-brainrot-dark rounded p-2 text-sm">
+                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => onViewAsset?.(h.assetId)}>
+                    <span className="text-lg">{h.asset.icon}</span>
+                    <div>
+                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors">{h.asset.ticker}</div>
+                      <div className="text-xs text-brainrot-muted">{h.shortQuantity} shares shorted @ ₹{h.averageShortPrice.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-brainrot-text font-mono">{formatCash(h.costBasis)}</div>
+                      <div className="text-xs text-brainrot-muted">@ ₹{h.averageShortPrice.toFixed(2)}</div>
+                    </div>
+                    <div className="text-right min-w-[80px]">
+                      <div className={`font-mono ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                        {isProfitable ? '+' : ''}{formatCash(h.profit)}
+                      </div>
+                      <div className={`text-xs ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                        {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(2)}%
+                      </div>
+                    </div>
+                    <MiniChart data={h.asset.historicalPrices.slice(-50)} color={isProfitable ? '#00ff88' : '#ff3355'} />
                   </div>
                 </div>
               );

@@ -26,6 +26,16 @@ function makeAsset(
     icon: '📦',
     color: '#888888',
     currentPrice: overrides.startingPrice,
+    dayOpenPrice: overrides.startingPrice,
+    // Phase-based market defaults
+    candles: [],
+    phase: 'accumulation' as const,
+    phaseTicksRemaining: 60,
+    trendStrength: 0,
+    candleOpen: overrides.startingPrice,
+    candleHigh: overrides.startingPrice,
+    candleLow: overrides.startingPrice,
+    candleTicks: 0,
     ...overrides,
   };
 }

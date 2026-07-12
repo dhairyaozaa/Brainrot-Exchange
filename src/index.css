@@ -128,3 +128,34 @@ body {
 .animate-flash-red {
   animation: priceFlashRed 0.5s ease-out;
 }
+
+/* Dark/Light mode support */
+:root {
+  --bg-primary: #080503;
+  --bg-secondary: #040201;
+  --bg-card: #110a07;
+  --border-color: #2a1510;
+  --text-primary: #e0cdbc;
+  --text-secondary: #8a7565;
+}
+
+.light-mode {
+  --bg-primary: #f5f0eb;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --border-color: #d4c8bc;
+  --text-primary: #2a1a10;
+  --text-secondary: #6b5a4e;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.light-mode .bg-brainrot-dark { background-color: var(--bg-secondary); }
+.light-mode .bg-brainrot-darker { background-color: var(--bg-primary); }
+.light-mode .bg-brainrot-card { background-color: var(--bg-card); border-color: var(--border-color); }
+.light-mode .border-brainrot-border { border-color: var(--border-color); }
+.light-mode .text-brainrot-text { color: var(--text-primary); }
+.light-mode .text-brainrot-muted { color: var(--text-secondary); }
+.light-mode .bg-brainrot-accent { background-color: #e05a2a; }
+.light-mode .text-brainrot-accent { color: #d04a1a; }
+.light-mode .scrollbar-thumb { background-color: var(--border-color); }

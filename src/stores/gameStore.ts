@@ -109,6 +109,7 @@ function createInitialState(): Partial<GameState> {
       reducedGlitch: false,
       soundEnabled: false,
       musicEnabled: false,
+      darkMode: true,
     },
   };
 }
@@ -979,7 +980,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         prestigeMultiplier: data.prestigeMultiplier ?? 1,
         taxesPaid: data.taxesPaid ?? 0,
         bankruptcyCount: data.bankruptcyCount ?? 0,
-        settings: data.settings ?? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false },
+        settings: data.settings ? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false, darkMode: true, ...data.settings } : { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false, darkMode: true },
       });
       return true;
     } catch {
@@ -1098,7 +1099,7 @@ function loadGame(): Partial<GameState> | null {
       prestigeMultiplier: data.prestigeMultiplier ?? 1,
       taxesPaid: data.taxesPaid ?? 0,
       bankruptcyCount: data.bankruptcyCount ?? 0,
-      settings: data.settings ?? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false },
+      settings: data.settings ? { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false, darkMode: true, ...data.settings } : { reducedMotion: false, reducedGlitch: false, soundEnabled: false, musicEnabled: false, darkMode: true },
       marketCondition: data.marketCondition ?? 'Normal',
       globalSentiment: data.globalSentiment ?? 50,
       marketStatus: data.marketStatus ?? 'Open',

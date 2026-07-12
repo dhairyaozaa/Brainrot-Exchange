@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { Chart } from './Chart';
+import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import type { BrainrotCategory } from '../types';
 
 export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const brainrots = useGameStore(s => s.brainrots);
@@ -70,7 +72,7 @@ export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string)
             <span className="text-brainrot-muted">Market:</span>
             <span className="text-brainrot-text">{marketCondition}</span>
             <span className="text-brainrot-muted">Sentiment:</span>
-            <span className={`${globalSentiment >= 50 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <span className={`${globalSentiment >= 50 ? 'text-green-400' : 'text-red-400'}`}>
               {globalSentiment.toFixed(0)}%
             </span>
           </div>
@@ -84,10 +86,10 @@ export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string)
         <div className="space-y-2">
           {categories.map(cat => (
             <div key={cat.name} className="flex items-center justify-between text-sm">
-              <span className="text-brainrot-text">{cat.name}</span>
+              <span className="text-brainrot-text" style={getCategoryStyle(cat.name as BrainrotCategory)}>{cat.name}</span>
               <div className="flex items-center gap-3">
                 <span className="text-brainrot-muted text-xs">{cat.count} assets</span>
-                <span className={`font-mono w-20 text-right ${cat.avgChange >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                <span className={`font-mono w-20 text-right ${cat.avgChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {cat.avgChange >= 0 ? '▲' : '▼'} {(cat.avgChange * 100).toFixed(2)}%
                 </span>
               </div>
@@ -105,7 +107,7 @@ export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string)
               <div key={asset.id} className="flex items-center justify-between text-[10px] sm:text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors active:scale-[0.98]" onClick={() => onViewAsset?.(asset.id)}>
                 <div className="flex items-center gap-1 min-w-0 flex-1">
                   <span className="flex-shrink-0">{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold hover:text-brainrot-accent transition-colors truncate">{asset.ticker}</span>
+                  <span className="font-bold transition-colors truncate" style={getCategoryStyle(asset.category)}>{asset.ticker}</span>
                 </div>
                 <span className="text-brainrot-accent font-mono flex-shrink-0 ml-1">
                   ▲ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(1) : '0.0'}%
@@ -122,7 +124,7 @@ export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string)
               <div key={asset.id} className="flex items-center justify-between text-[10px] sm:text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors active:scale-[0.98]" onClick={() => onViewAsset?.(asset.id)}>
                 <div className="flex items-center gap-1 min-w-0 flex-1">
                   <span className="flex-shrink-0">{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold hover:text-brainrot-red transition-colors truncate">{asset.ticker}</span>
+                  <span className="font-bold transition-colors truncate" style={getCategoryStyle(asset.category)}>{asset.ticker}</span>
                 </div>
                 <span className="text-brainrot-red font-mono flex-shrink-0 ml-1">
                   ▼ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(1) : '0.0'}%

@@ -66,6 +66,17 @@ export function SettingsView() {
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
+            checked={settings.darkMode}
+            onChange={e => updateSettings({ darkMode: e.target.checked })}
+            className="accent-brainrot-accent"
+          />
+          <span className="text-sm text-brainrot-text">Dark Mode</span>
+          <span className="text-xs text-brainrot-muted">Toggle between dark and light themes</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
             checked={settings.reducedMotion}
             onChange={e => updateSettings({ reducedMotion: e.target.checked })}
             className="accent-brainrot-accent"

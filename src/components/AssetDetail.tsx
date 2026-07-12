@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { Chart } from './Chart';
 import { PHASE_DISPLAY } from '../utils/phaseDisplay';
+import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import { getCategoryGlowStyle } from './CategoryPrice';
 
 export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () => void }) {
   const brainrots = useGameStore(s => s.brainrots);
@@ -109,9 +111,9 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             <div>
               <h2 className="text-xl font-bold text-brainrot-text">{asset.name}</h2>
               <div className="flex items-center gap-2 text-sm flex-wrap">
-                <span className="text-brainrot-accent font-bold">{asset.ticker}</span>
+                <span className="font-bold" style={getCategoryStyle(asset.category)}>{asset.ticker}</span>
                 <span className="text-brainrot-muted">·</span>
-                <span className="text-brainrot-muted">{asset.category}</span>
+                <span className={getCategoryColor(asset.category).twClass}>{asset.category}</span>
                 <span className="text-brainrot-muted">·</span>
                 <span className="text-brainrot-muted">{asset.rarity}</span>
                 <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${PHASE_DISPLAY[asset.phase].bg} ${PHASE_DISPLAY[asset.phase].color} ${PHASE_DISPLAY[asset.phase].border} border`}>
@@ -121,8 +123,8 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-bold font-mono">{formatPrice(asset.currentPrice)}</div>
-            <div className={`text-sm font-mono ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <div className="text-2xl sm:text-2xl font-bold font-mono" style={{...getCategoryStyle(asset.category), ...getCategoryGlowStyle(asset.category)}}>{formatPrice(asset.currentPrice)}</div>
+            <div className={`text-sm sm:text-sm font-mono ${isUp ? 'text-green-400' : 'text-red-400'}`}>
               {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
             </div>
           </div>
@@ -185,7 +187,7 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             </div>
           </div>
         </div>
-        <Chart data={chartData} height={250} color={isUp ? '#00ff88' : '#ff3355'} mode={chartMode} />
+        <Chart data={chartData} height={250} color={getCategoryColor(asset.category).hex} mode={chartMode} />
       </div>
 
       {/* Stats grid */}

@@ -28,7 +28,6 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  // Navigate to asset detail from any view
   const openAssetDetail = useCallback((assetId: string) => {
     setAssetDetailId(assetId);
     setActiveView('market');
@@ -40,12 +39,10 @@ function App() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTickRef = useRef(0);
 
-  // Initialize game
   useEffect(() => {
     initGame();
   }, [initGame]);
 
-  // Market tick loop
   useEffect(() => {
     if (paused) {
       if (tickRef.current) clearInterval(tickRef.current);
@@ -53,9 +50,6 @@ function App() {
       return;
     }
 
-    // Tick rate: 1 tick per 5 seconds at 1x speed
-    // Interval = 5000/speed ms, always 1 tick per interval
-    //  1x = 1 tick / 5s, 2x = 1 tick / 2.5s, 5x = 1 tick / 1s, 10x = 1 tick / 0.5s
     const tickInterval = Math.max(500, 5000 / speed);
 
     const tick = () => {
@@ -70,7 +64,6 @@ function App() {
     };
   }, [speed, paused, marketTick]);
 
-  // Autosave every 30 seconds
   useEffect(() => {
     const autosave = setInterval(() => {
       try {
@@ -85,7 +78,6 @@ function App() {
   }, []);
 
   const renderView = () => {
-    // If an asset detail is open, show it instead of the normal view
     if (assetDetailId) {
       return <AssetDetail assetId={assetDetailId} onBack={closeAssetDetail} />;
     }
@@ -106,10 +98,9 @@ function App() {
   };
 
   return (
-    <div className={`min-h-screen bg-brainrot-dark ${!settings.reducedMotion ? 'scanline' : ''}`}>
+    <div className={`min-h-screen bg-brainrot-dark ${!settings.reducedMotion ? 'scanline' : ''} ${settings.darkMode === false ? 'light-mode' : ''}`}>
       <TopBar onMenuClick={() => setMobileDrawerOpen(true)} />
 
-      {/* Mobile drawer */}
       {mobileDrawerOpen && (
         <div className="fixed inset-0 z-[60] sm:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileDrawerOpen(false)} />
@@ -127,7 +118,6 @@ function App() {
         </div>
       )}
 
-      {/* Desktop sidebar */}
       <div className="hidden sm:block">
         <Sidebar
           activeView={activeView}
@@ -136,7 +126,6 @@ function App() {
         />
       </div>
 
-      {/* Collapse toggle for desktop */}
       <button
         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         className="hidden sm:block fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-brainrot-darker border border-brainrot-border rounded-r p-1 text-brainrot-muted hover:text-brainrot-accent transition-colors"
@@ -145,7 +134,6 @@ function App() {
         {sidebarCollapsed ? '→' : '←'}
       </button>
 
-      {/* Main content */}
       <main
         className={`pt-12 pb-20 sm:pb-8 px-2 sm:px-6 transition-all duration-200 ${
           sidebarCollapsed ? 'sm:ml-[60px]' : 'sm:ml-[200px]'
@@ -156,7 +144,6 @@ function App() {
         </div>
       </main>
 
-      {/* Late-game absurdity */}
       {prestigeLevel > 2 && !settings.reducedGlitch && (
         <div className="fixed bottom-4 right-4 text-2xl opacity-30 pointer-events-none select-none animate-pulse">
           🧠🔄💀

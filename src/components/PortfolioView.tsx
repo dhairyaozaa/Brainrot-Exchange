@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAx
 import { useGameStore } from '../stores/gameStore';
 import { MiniChart } from './Chart';
 import { formatCash } from '../utils/format';
+import { getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
 
 const PIE_COLORS = [
   '#00ff88', '#ff3355', '#33aaff', '#ffcc00', '#8833ff',
@@ -145,7 +146,7 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
         </div>
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Net Worth</div>
-          <div className={`text-lg font-mono font-bold ${netWorth >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+          <div className={`text-lg font-mono font-bold ${netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatCash(netWorth)}
           </div>
         </div>
@@ -155,7 +156,7 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
         </div>
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Realized P&L</div>
-          <div className={`text-lg font-mono font-bold ${realizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+          <div className={`text-lg font-mono font-bold ${realizedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatCash(realizedProfit)}
           </div>
         </div>
@@ -164,23 +165,23 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Unrealized P&L</div>
-          <div className={`text-sm font-mono font-bold ${unrealizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+          <div className={`text-sm font-mono font-bold ${unrealizedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatCash(unrealizedProfit)}
           </div>
         </div>
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Total Return</div>
-          <div className={`text-sm font-mono font-bold ${totalReturn >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+          <div className={`text-sm font-mono font-bold ${totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatCash(totalReturn)}
           </div>
         </div>
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Best Asset</div>
-          <div className="text-sm font-mono font-bold text-brainrot-accent truncate">{bestAsset || 'N/A'}</div>
+          <div className="text-sm font-mono font-bold text-green-400 truncate">{bestAsset || 'N/A'}</div>
         </div>
         <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
           <div className="text-xs text-brainrot-muted">Worst Asset</div>
-          <div className="text-sm font-mono font-bold text-brainrot-red truncate">{worstAsset || 'N/A'}</div>
+          <div className="text-sm font-mono font-bold text-red-400 truncate">{worstAsset || 'N/A'}</div>
         </div>
       </div>
 
@@ -282,14 +283,14 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
                   <div className="flex items-center gap-2 cursor-pointer min-w-0 flex-1" onClick={() => onViewAsset?.(h.assetId)}>
                     <span className="text-lg flex-shrink-0">{h.asset.icon}</span>
                     <div className="min-w-0">
-                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors truncate">{h.asset.ticker}</div>
-                      <div className="text-[10px] sm:text-xs text-brainrot-muted truncate">{h.quantity} @ ₹{h.averagePurchasePrice.toFixed(2)}</div>
+                      <div className="font-bold hover:text-brainrot-accent transition-colors truncate" style={getCategoryStyle(h.asset.category)}>{h.asset.ticker}</div>
+                      <div className="text-xs sm:text-xs text-brainrot-muted truncate">{h.quantity} @ ₹{h.averagePurchasePrice.toFixed(2)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <div className="text-right">
-                      <div className="text-xs sm:text-sm font-mono font-bold">{formatCash(h.currentValue)}</div>
-                      <div className={`text-[10px] sm:text-xs font-mono ${h.profit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                      <div className="text-sm sm:text-sm font-mono font-bold" style={getCategoryStyle(h.asset.category)}>{formatCash(h.currentValue)}</div>
+                      <div className={`text-[10px] sm:text-xs font-mono ${h.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {h.profit >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
                       </div>
                     </div>
@@ -324,8 +325,8 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
                   </div>
                   <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <div className="text-right">
-                      <div className="text-xs sm:text-sm font-mono font-bold">{formatCash(h.costBasis)}</div>
-                      <div className={`text-[10px] sm:text-xs font-mono ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                      <div className="text-sm sm:text-sm font-mono font-bold" style={getCategoryStyle(h.asset.category)}>{formatCash(h.costBasis)}</div>
+                      <div className={`text-[10px] sm:text-xs font-mono ${isProfitable ? 'text-green-400' : 'text-red-400'}`}>
                         {isProfitable ? '+' : ''}{h.returnPct.toFixed(1)}%
                       </div>
                     </div>

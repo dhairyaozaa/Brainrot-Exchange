@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { PHASE_DISPLAY } from '../utils/phaseDisplay';
+import { CATEGORY_COLORS, getCategoryColor, getCategoryStyle } from '../utils/categoryColors';
+import { getCategoryGlowStyle } from './CategoryPrice';
+import type { BrainrotCategory } from '../types';
 
+const ALL_CATEGORIES: BrainrotCategory[] = [
+  'Beverage Beasts',
+  'Electronic Animals',
+  'Corporate Creatures',
+  'Government Birds',
+  'Radioactive Rodents',
+  'Internet Predators',
+  'Financial Primates',
+  'Household Horrors',
+  'Quantum Creatures',
+  'Space Organisms',
+];
 
 export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) => void }) {
   const brainrots = useGameStore(s => s.brainrots);
@@ -21,6 +36,7 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [showLegend, setShowLegend] = useState(false);
   
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'change' | 'hype' | 'phase'>('change');
 
@@ -91,6 +107,12 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
     }
   };  
 
+  // Get category hex color (or accent for "All")
+  const getCategoryFilterColor = (cat: string): string => {
+    if (cat === 'All') return '#ff6b35';
+    return getCategoryColor(cat as BrainrotCategory).hex;
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
@@ -114,15 +136,6 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
             className="bg-brainrot-dark border border-brainrot-border rounded px-2 py-1 text-xs text-brainrot-text w-32 focus:outline-none focus:border-brainrot-accent"
           />
           <select
-            value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-            className="bg-brainrot-dark border border-brainrot-border rounded px-2 py-1 text-xs text-brainrot-text focus:outline-none focus:border-brainrot-accent"
-          >
-            {categories.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <select
             value={sortBy}
             onChange={e => setSortBy(e.target.value as any)}
             className="bg-brainrot-dark border border-brainrot-border rounded px-2 py-1 text-xs text-brainrot-text focus:outline-none focus:border-brainrot-accent"
@@ -133,8 +146,64 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
             <option value="hype">Hype</option>
             <option value="phase">Phase</option>
           </select>
+          <button
+            onClick={() => setShowLegend(!showLegend)}
+            className={`px-2 py-1 text-xs rounded border transition-colors ${
+              showLegend
+                ? 'bg-brainrot-accent/20 text-brainrot-accent border-brainrot-accent/50'
+                : 'bg-brainrot-dark text-brainrot-muted border-brainrot-border hover:text-brainrot-text'
+            }`}
+          >
+            🎨 Legend
+          </button>
         </div>
       </div>
+
+      {/* Category filter chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {categories.map(cat => {
+          const isActive = categoryFilter === cat;
+          const color = getCategoryFilterColor(cat);
+          return (
+            <button
+              key={cat}
+              onClick={() => setCategoryFilter(cat)}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
+                isActive ? 'ring-1 ring-offset-1 ring-offset-brainrot-dark' : 'opacity-60 hover:opacity-100'
+              }`}
+              style={{
+                color: color,
+                backgroundColor: isActive ? color + '25' : color + '08',
+                borderColor: isActive ? color + '60' : color + '20',
+                boxShadow: isActive ? `0 0 0 1px ${color}40` : 'none',
+              }}
+            >
+              {cat === 'All' ? '🌐 All' : cat}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Color legend panel */}
+      {showLegend && (
+        <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3 animate-fadeIn">
+          <h3 className="text-xs font-bold text-brainrot-text mb-2">Category Color Legend</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {ALL_CATEGORIES.map(cat => {
+              const color = getCategoryColor(cat);
+              return (
+                <div key={cat} className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: color.hex }}
+                  />
+                  <span className="text-[10px] text-brainrot-muted truncate">{cat}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Market condition banner */}
       {marketCondition !== 'Normal' && (
@@ -167,18 +236,18 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   <span className="text-lg flex-shrink-0">{asset.icon}</span>
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-brainrot-text truncate">{asset.ticker}</div>
-                    <div className="text-[10px] text-brainrot-muted truncate">{asset.name}</div>
+                    <div className="text-base sm:text-sm font-bold truncate" style={getCategoryStyle(asset.category)}>{asset.ticker}</div>
+                    <div className="text-sm sm:text-xs text-brainrot-muted truncate">{asset.name}</div>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-2">
-                  <div className="text-xs font-mono font-bold">{formatPrice(asset.currentPrice)}</div>
-                  <div className={`text-[10px] font-mono ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                  <div className="text-lg sm:text-sm font-mono font-bold" style={{...getCategoryStyle(asset.category), ...getCategoryGlowStyle(asset.category)}}>{formatPrice(asset.currentPrice)}</div>
+                  <div className={`text-sm sm:text-xs font-mono ${isUp ? 'text-green-400' : 'text-red-400'}`}>
                     {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-brainrot-muted">
+              <div className="flex items-center gap-2 text-xs sm:text-[10px] text-brainrot-muted">
                 <span>Vol: {asset.volume >= 1000 ? `${(asset.volume / 1000).toFixed(0)}K` : asset.volume}</span>
                 <span>•</span>
                 <span>Hype: {asset.hype.toFixed(0)}%</span>
@@ -239,6 +308,7 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
             <tr className="text-brainrot-muted border-b border-brainrot-border">
               <th className="text-left py-2 px-2">Asset</th>
               <th className="text-left py-2 px-2">Ticker</th>
+              <th className="text-left py-2 px-2">Category</th>
               <th className="text-right py-2 px-2">Price</th>
               <th className="text-right py-2 px-2">Day</th>
               <th className="text-right py-2 px-2">Vol</th>
@@ -269,8 +339,13 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
                     </div>
                   </td>
                   <td className="py-2 px-2 font-bold text-brainrot-text">{asset.ticker}</td>
-                  <td className="py-2 px-2 text-right">{formatPrice(asset.currentPrice)}</td>
-                  <td className={`py-2 px-2 text-right ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                  <td className="py-2 px-2">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${getCategoryColor(asset.category).bgClass} ${getCategoryColor(asset.category).twClass} ${getCategoryColor(asset.category).borderClass} border`}>
+                      {getCategoryColor(asset.category).label}
+                    </span>
+                  </td>
+                  <td className="py-2 px-2 text-right font-mono font-bold" style={{...getCategoryStyle(asset.category), ...getCategoryGlowStyle(asset.category)}}>{formatPrice(asset.currentPrice)}</td>
+                  <td className={`py-2 px-2 text-right ${isUp ? 'text-green-400' : 'text-red-400'}`}>
                     {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
                   </td>
                   <td className="py-2 px-2 text-right text-brainrot-muted">
@@ -374,6 +449,7 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
           <div className="flex flex-wrap gap-2">
             {recentWhaleTrades.slice(0, 10).map((trade, i) => {
               const isBuy = trade.type === 'Buy';
+              const tradeAsset = brainrots.find(b => b.ticker === trade.ticker);
               return (
                 <div
                   key={`${trade.whaleId}_${i}`}
@@ -383,7 +459,7 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
                   <span className={isBuy ? 'text-brainrot-accent' : 'text-brainrot-red'}>
                     {isBuy ? '▲' : '▼'}
                   </span>
-                  <span className="text-brainrot-text font-bold">${trade.ticker}</span>
+                  <span className="font-bold" style={tradeAsset ? getCategoryStyle(tradeAsset.category) : { color: '#e0cdbc' }}>{trade.ticker}</span>
                   <span className="text-brainrot-muted">×{trade.quantity >= 1000 ? `${(trade.quantity / 1000).toFixed(1)}K` : trade.quantity}</span>
                 </div>
               );

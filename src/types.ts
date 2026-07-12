@@ -304,6 +304,7 @@ export interface GameSettings {
   reducedGlitch: boolean;
   soundEnabled: boolean;
   musicEnabled: boolean;
+  darkMode: boolean;
 }
 
 export interface SaveData {

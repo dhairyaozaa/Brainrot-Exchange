@@ -147,10 +147,9 @@ function App() {
 
       {/* Main content */}
       <main
-        className="pt-12 pb-8 px-3 sm:px-6 transition-all duration-200"
-        style={{
-          marginLeft: sidebarCollapsed ? '60px' : '200px',
-        }}
+        className={`pt-12 pb-20 sm:pb-8 px-2 sm:px-6 transition-all duration-200 ${
+          sidebarCollapsed ? 'sm:ml-[60px]' : 'sm:ml-[200px]'
+        }`}
       >
         <div className="max-w-6xl mx-auto">
           {renderView()}

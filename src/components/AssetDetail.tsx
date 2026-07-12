@@ -140,46 +140,46 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
       </div>
 
       {/* Price chart */}
-      <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold text-brainrot-text">Price Chart</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {/* Chart mode toggle */}
             <div className="flex gap-0.5 border border-brainrot-border rounded overflow-hidden">
               <button
                 onClick={() => setChartMode('line')}
-                className={`px-2 py-0.5 text-xs font-mono transition-colors ${
+                className={`px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-mono transition-colors ${
                   chartMode === 'line'
                     ? 'bg-brainrot-accent/20 text-brainrot-accent'
                     : 'text-brainrot-muted hover:text-brainrot-text'
                 }`}
               >
-                📈 Line
+                📈<span className="hidden sm:inline ml-0.5">Line</span>
               </button>
               <button
                 onClick={() => setChartMode('candle')}
-                className={`px-2 py-0.5 text-xs font-mono transition-colors ${
+                className={`px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-mono transition-colors ${
                   chartMode === 'candle'
                     ? 'bg-brainrot-accent/20 text-brainrot-accent'
                     : 'text-brainrot-muted hover:text-brainrot-text'
                 }`}
               >
-                🕯 Candle
+                🕯<span className="hidden sm:inline ml-0.5">Candle</span>
               </button>
             </div>
             {/* Time range buttons */}
-            <div className="flex gap-1">
+            <div className="flex gap-0.5">
               {(['2m', '5m', '1h', '1d', 'all'] as const).map(r => (
                 <button
                   key={r}
                   onClick={() => setTimeRange(r)}
-                  className={`px-2 py-0.5 rounded text-xs font-mono ${
+                  className={`px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono ${
                     timeRange === r
                       ? 'bg-brainrot-accent/20 text-brainrot-accent border border-brainrot-accent/50'
                       : 'text-brainrot-muted border border-transparent hover:text-brainrot-text'
                   }`}
                 >
-                  {r === '2m' ? '2m' : r === '5m' ? '5m' : r}
+                  {r}
                 </button>
               ))}
             </div>

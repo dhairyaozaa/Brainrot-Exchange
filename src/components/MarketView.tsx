@@ -160,67 +160,69 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
           return (
             <div
               key={asset.id}
-              className="bg-brainrot-card border border-brainrot-border rounded-lg p-3 space-y-2 cursor-pointer hover:border-brainrot-accent/50 transition-colors"
+              className="bg-brainrot-card border border-brainrot-border rounded-lg p-2.5 space-y-1.5 active:scale-[0.99] transition-transform cursor-pointer"
               onClick={() => onViewAsset?.(asset.id)}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{asset.icon}</span>
-                  <div>
-                    <div className="text-sm font-bold text-brainrot-text">{asset.ticker}</div>
-                    <div className="text-xs text-brainrot-muted">{asset.name}</div>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <span className="text-lg flex-shrink-0">{asset.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-brainrot-text truncate">{asset.ticker}</div>
+                    <div className="text-[10px] text-brainrot-muted truncate">{asset.name}</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-mono">{formatPrice(asset.currentPrice)}</div>
-                  <div className={`text-xs font-mono ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                <div className="text-right flex-shrink-0 ml-2">
+                  <div className="text-xs font-mono font-bold">{formatPrice(asset.currentPrice)}</div>
+                  <div className={`text-[10px] font-mono ${isUp ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
                     {isUp ? '▲' : '▼'} {(dayChangePct * 100).toFixed(2)}%
                   </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-brainrot-muted">Vol: {asset.volume.toLocaleString()}</span>
-                <span className="text-brainrot-muted">Hype: {asset.hype.toFixed(0)}%</span>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${PHASE_DISPLAY[asset.phase].bg} ${PHASE_DISPLAY[asset.phase].color} ${PHASE_DISPLAY[asset.phase].border} border`}>
+              <div className="flex items-center gap-2 text-[10px] text-brainrot-muted">
+                <span>Vol: {asset.volume >= 1000 ? `${(asset.volume / 1000).toFixed(0)}K` : asset.volume}</span>
+                <span>•</span>
+                <span>Hype: {asset.hype.toFixed(0)}%</span>
+                <span>•</span>
+                <span className={`px-1 py-0.5 rounded text-[9px] font-semibold ${PHASE_DISPLAY[asset.phase].bg} ${PHASE_DISPLAY[asset.phase].color} ${PHASE_DISPLAY[asset.phase].border} border leading-none`}>
                   {PHASE_DISPLAY[asset.phase].icon} {PHASE_DISPLAY[asset.phase].label}
                 </span>
               </div>
-              {holding && holding.quantity > 0 && (
-                <div className="text-xs text-brainrot-blue">
-                  Long: {holding.quantity} @ ₹{holding.averagePurchasePrice.toFixed(2)}
+              {holding && (holding.quantity > 0 || holding.shortQuantity > 0) && (
+                <div className="flex gap-2 text-[10px]">
+                  {holding.quantity > 0 && (
+                    <span className="text-brainrot-blue">📈 {holding.quantity} @ {formatPrice(holding.averagePurchasePrice)}</span>
+                  )}
+                  {holding.shortQuantity > 0 && (
+                    <span className="text-brainrot-orange">📉 {holding.shortQuantity} @ {formatPrice(holding.averageShortPrice)}</span>
+                  )}
                 </div>
               )}
-              {holding && holding.shortQuantity > 0 && (
-                <div className="text-xs text-brainrot-orange">
-                  Short: {holding.shortQuantity} @ ₹{holding.averageShortPrice.toFixed(2)}
-                </div>
-              )}
-              <div className="flex gap-1 flex-wrap">
+              <div className="grid grid-cols-4 gap-1">
                 <button
                   onClick={(e) => { e.stopPropagation(); handleQuickBuy(asset.id); }}
                   disabled={marketStatus !== 'Open'}
-                  className="flex-1 bg-brainrot-accent/20 text-brainrot-accent border border-brainrot-accent/30 rounded px-2 py-1 text-xs font-mono hover:bg-brainrot-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="bg-brainrot-accent/20 text-brainrot-accent border border-brainrot-accent/30 rounded py-1.5 text-[10px] font-bold hover:bg-brainrot-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
                 >
                   Buy
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleQuickSell(asset.id); }}
                   disabled={marketStatus !== 'Open' || !holding || holding.quantity <= 0}
-                  className="flex-1 bg-brainrot-red/20 text-brainrot-red border border-brainrot-red/30 rounded px-2 py-1 text-xs font-mono hover:bg-brainrot-red/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="bg-brainrot-red/20 text-brainrot-red border border-brainrot-red/30 rounded py-1.5 text-[10px] font-bold hover:bg-brainrot-red/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
                 >
                   Sell
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleQuickShort(asset.id); }}
                   disabled={marketStatus !== 'Open' || cash < asset.currentPrice * 1.025}
-                  className="flex-1 bg-brainrot-orange/20 text-brainrot-orange border border-brainrot-orange/30 rounded px-2 py-1 text-xs font-mono hover:bg-brainrot-orange/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="bg-brainrot-orange/20 text-brainrot-orange border border-brainrot-orange/30 rounded py-1.5 text-[10px] font-bold hover:bg-brainrot-orange/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
                 >
                   Short
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleQuickCover(asset.id); }}
                   disabled={marketStatus !== 'Open' || !holding || !holding.shortQuantity || holding.shortQuantity <= 0}
-                  className="flex-1 bg-purple-600/20 text-purple-400 border border-purple-600/30 rounded px-2 py-1 text-xs font-mono hover:bg-purple-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="bg-purple-600/20 text-purple-400 border border-purple-600/30 rounded py-1.5 text-[10px] font-bold hover:bg-purple-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
                 >
                   Cover
                 </button>

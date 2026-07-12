@@ -279,27 +279,23 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
             {activeHoldings.map(h => {
               return (
                 <div key={h.assetId} className="flex items-center justify-between bg-brainrot-dark rounded p-2 text-sm">
-                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => onViewAsset?.(h.assetId)}>
-                    <span className="text-lg">{h.asset.icon}</span>
-                    <div>
-                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors">{h.asset.ticker}</div>
-                      <div className="text-xs text-brainrot-muted">{h.quantity} shares @ ₹{h.averagePurchasePrice.toFixed(2)}</div>
+                  <div className="flex items-center gap-2 cursor-pointer min-w-0 flex-1" onClick={() => onViewAsset?.(h.assetId)}>
+                    <span className="text-lg flex-shrink-0">{h.asset.icon}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors truncate">{h.asset.ticker}</div>
+                      <div className="text-[10px] sm:text-xs text-brainrot-muted truncate">{h.quantity} @ ₹{h.averagePurchasePrice.toFixed(2)}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <div className="text-right">
-                      <div className="text-brainrot-text font-mono">{formatCash(h.currentValue)}</div>
-                      <div className="text-xs text-brainrot-muted">@ ₹{h.asset.currentPrice.toFixed(2)}</div>
-                    </div>
-                    <div className="text-right min-w-[80px]">
-                      <div className={`font-mono ${h.profit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                        {h.profit >= 0 ? '+' : ''}{formatCash(h.profit)}
-                      </div>
-                      <div className={`text-xs ${h.returnPct >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                        {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(2)}%
+                      <div className="text-xs sm:text-sm font-mono font-bold">{formatCash(h.currentValue)}</div>
+                      <div className={`text-[10px] sm:text-xs font-mono ${h.profit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                        {h.profit >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
                       </div>
                     </div>
-                    <MiniChart data={h.asset.historicalPrices.slice(-50)} color={h.profit >= 0 ? '#00ff88' : '#ff3355'} />
+                    <div className="hidden sm:block">
+                      <MiniChart data={h.asset.historicalPrices.slice(-50)} color={h.profit >= 0 ? '#00ff88' : '#ff3355'} />
+                    </div>
                   </div>
                 </div>
               );
@@ -319,27 +315,23 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
               const isProfitable = h.profit > 0;
               return (
                 <div key={h.assetId} className="flex items-center justify-between bg-brainrot-dark rounded p-2 text-sm">
-                  <div className="flex items-center gap-2 cursor-pointer" onClick={() => onViewAsset?.(h.assetId)}>
-                    <span className="text-lg">{h.asset.icon}</span>
-                    <div>
-                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors">{h.asset.ticker}</div>
-                      <div className="text-xs text-brainrot-muted">{h.shortQuantity} shares shorted @ ₹{h.averageShortPrice.toFixed(2)}</div>
+                  <div className="flex items-center gap-2 cursor-pointer min-w-0 flex-1" onClick={() => onViewAsset?.(h.assetId)}>
+                    <span className="text-lg flex-shrink-0">{h.asset.icon}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors truncate">{h.asset.ticker}</div>
+                      <div className="text-[10px] sm:text-xs text-brainrot-muted truncate">{h.shortQuantity} @ ₹{h.averageShortPrice.toFixed(2)}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <div className="text-right">
-                      <div className="text-brainrot-text font-mono">{formatCash(h.costBasis)}</div>
-                      <div className="text-xs text-brainrot-muted">@ ₹{h.averageShortPrice.toFixed(2)}</div>
-                    </div>
-                    <div className="text-right min-w-[80px]">
-                      <div className={`font-mono ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                        {isProfitable ? '+' : ''}{formatCash(h.profit)}
-                      </div>
-                      <div className={`text-xs ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-                        {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(2)}%
+                      <div className="text-xs sm:text-sm font-mono font-bold">{formatCash(h.costBasis)}</div>
+                      <div className={`text-[10px] sm:text-xs font-mono ${isProfitable ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+                        {isProfitable ? '+' : ''}{h.returnPct.toFixed(1)}%
                       </div>
                     </div>
-                    <MiniChart data={h.asset.historicalPrices.slice(-50)} color={isProfitable ? '#00ff88' : '#ff3355'} />
+                    <div className="hidden sm:block">
+                      <MiniChart data={h.asset.historicalPrices.slice(-50)} color={isProfitable ? '#00ff88' : '#ff3355'} />
+                    </div>
                   </div>
                 </div>
               );

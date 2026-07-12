@@ -6,9 +6,6 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   const currentDay = useGameStore(s => s.currentDay);
   const marketStatus = useGameStore(s => s.marketStatus);
   const marketCondition = useGameStore(s => s.marketCondition);
-  const globalSentiment = useGameStore(s => s.globalSentiment);
-  const rank = useGameStore(s => s.rank);
-  const level = useGameStore(s => s.level);
   const speed = useGameStore(s => s.speed);
   const paused = useGameStore(s => s.paused);
   const setSpeed = useGameStore(s => s.setSpeed);
@@ -41,83 +38,78 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-brainrot-darker border-b border-brainrot-border px-2 sm:px-4 py-1.5">
-      <div className="flex items-center justify-between gap-1 sm:gap-4 text-xs sm:text-sm">
-        <button onClick={onMenuClick} className="sm:hidden text-brainrot-text hover:text-brainrot-accent p-1">
-          ☰
-        </button>
-
-        <div className="hidden sm:flex items-center gap-1 font-bold text-brainrot-accent">
-          <span className="text-base">🧠</span>
-          <span className="text-sm">BRAINROT</span>
-          <span className="text-xs text-brainrot-muted">EXCHANGE</span>
-          {prestigeLevel > 0 && (
-            <span className="text-brainrot-purple text-xs ml-1">✦{prestigeLevel}</span>
-          )}
+    <div className="fixed top-0 left-0 right-0 z-50 bg-brainrot-darker border-b border-brainrot-border px-1.5 sm:px-4 py-1">
+      <div className="flex items-center justify-between gap-0.5 sm:gap-3 text-[10px] sm:text-sm">
+        {/* Hamburger + Brand */}
+        <div className="flex items-center gap-1">
+          <button onClick={onMenuClick} className="sm:hidden text-brainrot-text hover:text-brainrot-accent p-1 text-base">
+            ☰
+          </button>
+          <div className="hidden sm:flex items-center gap-1 font-bold text-brainrot-accent">
+            <span className="text-base">🧠</span>
+            <span className="text-sm">BRAINROT</span>
+            <span className="text-[10px] text-brainrot-muted">EXCHANGE</span>
+            {prestigeLevel > 0 && (
+              <span className="text-brainrot-purple text-[10px] ml-0.5">✦{prestigeLevel}</span>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* Cash & NW - always visible, compact on mobile */}
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <div className="text-brainrot-text">
-            <span className="text-brainrot-muted hidden sm:inline">Cash </span>
-            <span className="font-mono">{formatCash(cash)}</span>
+            <span className="text-brainrot-muted">C </span>
+            <span className="font-mono text-[10px] sm:text-xs">{formatCash(cash)}</span>
           </div>
           <div className="text-brainrot-text">
-            <span className="text-brainrot-muted hidden sm:inline">NW </span>
-            <span className={`font-mono ${netWorth > 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <span className="text-brainrot-muted">N </span>
+            <span className={`font-mono text-[10px] sm:text-xs ${netWorth > 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
               {formatCash(netWorth)}
             </span>
           </div>
-          <div className="text-brainrot-text hidden md:inline">
+          <div className="hidden md:inline text-brainrot-text">
             <span className="text-brainrot-muted">P&L </span>
-            <span className={`font-mono ${realizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <span className={`font-mono text-[10px] sm:text-xs ${realizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
               {formatCash(realizedProfit)}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-4 text-xs">
-          <div className="hidden md:block">
-            <span className="text-brainrot-muted">Day </span>
-            <span className="text-brainrot-text">{currentDay}</span>
+        {/* Day, Status, Speed controls - responsive */}
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="hidden sm:block text-[10px]">
+            <span className="text-brainrot-muted">D</span>
+            <span className="text-brainrot-text ml-0.5">{currentDay}</span>
           </div>
           <div>
-            <span className={`font-mono ${statusColor}`}>
-              {marketStatus}
+            <span className={`font-mono text-[10px] sm:text-xs ${statusColor}`}>
+              {marketStatus === 'Open' ? 'O' : 'C'}
             </span>
           </div>
-          <div className="hidden lg:block">
+          <div className="hidden lg:block text-[10px]">
             <span className={conditionColors[marketCondition] || 'text-brainrot-text'}>
               {marketCondition}
             </span>
           </div>
-          <div className="hidden sm:block">
-            <span className="text-brainrot-muted">Sentiment </span>
-            <span className={`font-mono ${globalSentiment >= 50 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
-              {globalSentiment.toFixed(0)}%
-            </span>
-          </div>
-          <div className="hidden sm:block">
-            <span className="text-brainrot-muted">{rank} </span>
-            <span className="text-brainrot-yellow">Lv.{level}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button
-            onClick={togglePause}
-            className={`px-1.5 py-0.5 rounded text-xs font-mono border ${paused ? 'border-brainrot-yellow text-brainrot-yellow' : 'border-brainrot-border text-brainrot-text'} hover:border-brainrot-accent`}
-          >
-            {paused ? '▶' : '⏸'}
-          </button>
-          {[1, 2, 5, 10].map(s => (
+          {/* Speed controls - always visible, compact */}
+          <div className="flex items-center gap-0.5">
             <button
-              key={s}
-              onClick={() => setSpeed(s)}
-              className={`px-1.5 py-0.5 rounded text-xs font-mono border ${speed === s ? 'border-brainrot-accent text-brainrot-accent' : 'border-brainrot-border text-brainrot-muted'} hover:border-brainrot-accent`}
+              onClick={togglePause}
+              className={`px-1 py-0.5 rounded text-[10px] sm:text-xs font-mono border leading-none ${paused ? 'border-brainrot-yellow text-brainrot-yellow' : 'border-brainrot-border text-brainrot-text'} hover:border-brainrot-accent transition-colors`}
+              title={paused ? 'Resume' : 'Pause'}
             >
-              {s}×
+              {paused ? '▶' : '⏸'}
             </button>
-          ))}
+            {[1, 2, 5, 10].map(s => (
+              <button
+                key={s}
+                onClick={() => setSpeed(s)}
+                className={`px-1 py-0.5 rounded text-[10px] sm:text-xs font-mono border leading-none ${speed === s ? 'border-brainrot-accent text-brainrot-accent' : 'border-brainrot-border text-brainrot-muted'} hover:border-brainrot-accent transition-colors`}
+              >
+                {s}×
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

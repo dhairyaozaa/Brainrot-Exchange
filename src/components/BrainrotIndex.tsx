@@ -98,34 +98,34 @@ export function BrainrotIndex({ onViewAsset }: { onViewAsset?: (assetId: string)
 
       {/* Top gainers and losers */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
-          <h3 className="text-sm font-bold text-brainrot-accent mb-2">Top Gainers</h3>
-          <div className="space-y-1">
+        <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-2 sm:p-3">
+          <h3 className="text-[11px] sm:text-sm font-bold text-brainrot-accent mb-1.5 sm:mb-2">📈 Top Gainers</h3>
+          <div className="space-y-0.5">
             {gainers.map(asset => (
-              <div key={asset.id} className="flex items-center justify-between text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors" onClick={() => onViewAsset?.(asset.id)}>
-                <div className="flex items-center gap-1">
-                  <span>{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold hover:text-brainrot-accent transition-colors">{asset.ticker}</span>
+              <div key={asset.id} className="flex items-center justify-between text-[10px] sm:text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors active:scale-[0.98]" onClick={() => onViewAsset?.(asset.id)}>
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <span className="flex-shrink-0">{asset.icon}</span>
+                  <span className="text-brainrot-text font-bold hover:text-brainrot-accent transition-colors truncate">{asset.ticker}</span>
                 </div>
-                <span className="text-brainrot-accent font-mono">
-                  ▲ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(2) : '0.00'}%
+                <span className="text-brainrot-accent font-mono flex-shrink-0 ml-1">
+                  ▲ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(1) : '0.0'}%
                 </span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-3">
-          <h3 className="text-sm font-bold text-brainrot-red mb-2">Top Losers</h3>
-          <div className="space-y-1">
+        <div className="bg-brainrot-card border border-brainrot-border rounded-lg p-2 sm:p-3">
+          <h3 className="text-[11px] sm:text-sm font-bold text-brainrot-red mb-1.5 sm:mb-2">📉 Top Losers</h3>
+          <div className="space-y-0.5">
             {losers.map(asset => (
-              <div key={asset.id} className="flex items-center justify-between text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors" onClick={() => onViewAsset?.(asset.id)}>
-                <div className="flex items-center gap-1">
-                  <span>{asset.icon}</span>
-                  <span className="text-brainrot-text font-bold hover:text-brainrot-red transition-colors">{asset.ticker}</span>
+              <div key={asset.id} className="flex items-center justify-between text-[10px] sm:text-xs cursor-pointer hover:bg-brainrot-dark/50 rounded px-1 -mx-1 transition-colors active:scale-[0.98]" onClick={() => onViewAsset?.(asset.id)}>
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <span className="flex-shrink-0">{asset.icon}</span>
+                  <span className="text-brainrot-text font-bold hover:text-brainrot-red transition-colors truncate">{asset.ticker}</span>
                 </div>
-                <span className="text-brainrot-red font-mono">
-                  ▼ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(2) : '0.00'}%
+                <span className="text-brainrot-red font-mono flex-shrink-0 ml-1">
+                  ▼ {asset.dayOpenPrice > 0 ? (((asset.currentPrice - asset.dayOpenPrice) / asset.dayOpenPrice) * 100).toFixed(1) : '0.0'}%
                 </span>
               </div>
             ))}

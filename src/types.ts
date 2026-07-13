@@ -191,6 +191,8 @@ export interface PlayerHolding {
   averagePurchasePrice: number;
   shortQuantity: number;      // Short position (shares borrowed & sold)
   averageShortPrice: number; // Average price at which short was opened
+  longEntryTick: number;      // Tick when long position was opened (for short-term tax)
+  shortEntryTick: number;     // Tick when short position was opened (for short-term tax)
 }
 
 export interface TradingRoomUpgrade {

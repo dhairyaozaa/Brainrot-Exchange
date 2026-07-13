@@ -3,9 +3,9 @@ import { BRAINROTS } from '../data/brainrots';
 import { TimeEngine } from './TimeEngine';
 import { PriceEngine } from './PriceEngine';
 import { NewsEngine } from './NewsEngine';
-import { WhaleEngine, type WhaleTrade } from './WhaleEngine';
+import { WhaleEngine, type WhaleTrade, type PlayerPositionSnapshot } from './WhaleEngine';
 import { WHALES } from '../data/whales';
-import { generateRotterPost } from '../data/rotterAccounts';
+import { generateRotterPost, generateCounterTradePost } from '../data/rotterAccounts';
 import { tickPhase, initPhaseData } from './PhaseEngine';
 
 export interface MarketTickResult {
@@ -36,6 +36,10 @@ export class MarketEngine {
   // Player supply/demand pressure
   private playerDemand: Record<string, number> = {};
   private playerSupply: Record<string, number> = {};
+
+  // Player position tracking for whale counter-trading
+  private playerPositions: PlayerPositionSnapshot[] = [];
+  private playerNetWorth = 0;
 
   // Intraday phase tracking
   private dayStartBias = 0;
@@ -120,9 +124,9 @@ export class MarketEngine {
     this.globalSentiment += (Math.random() - 0.5) * 0.5;
     this.globalSentiment = Math.max(10, Math.min(90, this.globalSentiment));
 
-    // Whale trades
+    // Whale trades (with counter-trading awareness)
     const whaleTrades = marketOpen
-      ? this.whaleEngine.tick(this.brainrots, this.marketCondition)
+      ? this.whaleEngine.tick(this.brainrots, this.marketCondition, this.playerPositions, this.playerNetWorth)
       : [];
 
     // Apply whale trades
@@ -137,6 +141,24 @@ export class MarketEngine {
           asset.supply += trade.quantity * 0.1;
           asset.volume += trade.quantity;
         }
+      }
+
+      // Generate ROTTER post for counter-trades
+      if (trade.isCounterTrade && Math.random() < 0.6) {
+        const { accountId, content } = generateCounterTradePost(trade.ticker, trade.type === 'Buy');
+        const counterPost: RotterPost = {
+          id: `counter_${totalTicks}_${trade.whaleId}`,
+          accountId,
+          content,
+          timestamp: totalTicks,
+          likes: Math.floor(Math.random() * 800) + 200,
+          reposts: Math.floor(Math.random() * 80) + 20,
+          relatedAssets: [trade.assetId],
+          hypeEffect: -0.1, // Slightly negative - creates doubt
+          trustEffect: 0.05,
+        };
+        newRotterPosts.push(counterPost);
+        this.rotterPosts.push(counterPost);
       }
     }
 
@@ -310,6 +332,43 @@ export class MarketEngine {
     if (asset) {
       asset.supply += quantity;
       asset.volume += quantity;
+    }
+  }
+
+  /** Update whale awareness of player positions (called from gameStore) */
+  updatePlayerPositions(
+    holdings: { assetId: string; quantity: number; averagePurchasePrice: number; shortQuantity: number; averageShortPrice: number }[],
+    brainrots: BrainrotAsset[],
+    netWorth: number,
+  ): void {
+    this.playerNetWorth = netWorth;
+    this.playerPositions = [];
+    for (const h of holdings) {
+      const asset = brainrots.find(b => b.id === h.assetId);
+      if (!asset) continue;
+
+      if (h.quantity > 0) {
+        this.playerPositions.push({
+          assetId: h.assetId,
+          quantity: h.quantity,
+          averagePrice: h.averagePurchasePrice,
+          currentValue: asset.currentPrice * h.quantity,
+          isShort: false,
+          shortQuantity: 0,
+          shortValue: 0,
+        });
+      }
+      if (h.shortQuantity > 0) {
+        this.playerPositions.push({
+          assetId: h.assetId,
+          quantity: 0,
+          averagePrice: h.averageShortPrice,
+          currentValue: 0,
+          isShort: true,
+          shortQuantity: h.shortQuantity,
+          shortValue: asset.currentPrice * h.shortQuantity,
+        });
+      }
     }
   }
 

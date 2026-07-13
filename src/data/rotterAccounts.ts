@@ -305,6 +305,20 @@ const ROTTER_POST_TEMPLATES = [
   'My grandmother told me to buy ${{TICKER}}. She has never been wrong.',
 ];
 
+// Counter-trade specific templates - market resistance flavor text
+const COUNTER_TRADE_TEMPLATES = [
+  'Seeing heavy resistance on ${{TICKER}}. Market makers are active. Interesting...',
+  'Large sell walls appearing on ${{TICKER}}. Someone doesn\'t want this to go higher. 👀',
+  '${{TICKER}} hitting major resistance. Smart money might be stepping in.',
+  'Whale alert: Big player dumping ${{TICKER}}. Is this the top? 🤔',
+  'Market makers providing heavy resistance on ${{TICKER}}. Classic behavior.',
+  'Interesting... ${{TICKER}} facing unusual selling pressure. Coincidence? I think not.',
+  '${{TICKER}} struggling to break through. Someone is defending this level hard.',
+  'The ${{TICKER}} resistance is real. Market makers don\'t want you to win.',
+  'Noticed unusual whale activity on ${{TICKER}}. Resistance is building. Be careful.',
+  '${{TICKER}} short covering met with heavy selling. Someone is watching. 🐋',
+];
+
 export function getRotterAccounts(): RotterAccount[] {
   return ROTTER_ACCOUNTS;
 }
@@ -323,6 +337,21 @@ export function generateRotterPost(availableTickers: string[]): { accountId: str
   let content = template
     .replace(/\${{TICKER}}/g, `$${ticker}`)
     .replace(/\${{TICKER2}}/g, `$${ticker2}`);
+  
+  return { accountId: account.id, content };
+}
+
+/** Generate a counter-trade specific ROTTER post */
+export function generateCounterTradePost(ticker: string, isShortCover: boolean): { accountId: string; content: string } {
+  // Use trader/influencer accounts for counter-trade posts (more credible)
+  const credibleAccounts = ROTTER_ACCOUNTS.filter(a => a.isTrader || a.isInfluencer || a.isNews);
+  const account = credibleAccounts[Math.floor(Math.random() * credibleAccounts.length)];
+  const template = COUNTER_TRADE_TEMPLATES[Math.floor(Math.random() * COUNTER_TRADE_TEMPLATES.length)];
+  
+  let content = template.replace(/\${{TICKER}}/g, `$${ticker}`);
+  if (isShortCover) {
+    content += ' Short squeeze attempt met with fresh supply.';
+  }
   
   return { accountId: account.id, content };
 }

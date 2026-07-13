@@ -15,6 +15,20 @@ import { playTradeSound, playCashSound, playNewsSound, playCrashSound, playRally
 
 const BROKERAGE_FEE_RATE = 0.025; // 2.5% fee (increased for challenge)
 
+// ── Difficulty Constants ──
+const SHORT_TERM_TAX_RATE = 0.30;   // < 10 ticks held
+const MID_TERM_TAX_RATE = 0.20;     // 10-30 ticks held
+const LONG_TERM_TAX_RATE = 0.10;    // > 30 ticks held
+const SHORT_TERM_THRESHOLD = 10;    // ticks for short-term classification
+const MID_TERM_THRESHOLD = 30;      // ticks for mid-term classification
+const SLIPPAGE_BASE = 0.002;        // 0.2% base slippage per 1% of volume
+const MARGIN_CALL_THRESHOLD = 0.70; // Force cover at 70% loss on shorts
+const MARGIN_CALL_PENALTY = 0.05;   // 5% penalty on forced cover
+const WEALTH_FEE_RATE = 0.001;      // 0.1% of net worth per day
+const MAX_POSITION_RATIO = 0.25;    // Max 25% of net worth in one asset
+const RUG_PULL_BASE_CHANCE = 0.0002; // Base chance per tick of rug pull
+const INSIDER_SCANDAL_CHANCE = 0.0003; // Chance of insider scandal event
+
 interface GameStore extends GameState {
   marketEngine: MarketEngine;
 
@@ -280,6 +294,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (state.paused) return;
 
     const engine = state.marketEngine;
+
+    // Update whale awareness of player positions for counter-trading
+    engine.updatePlayerPositions(state.holdings, state.brainrots, state.netWorth);
+
     const result = engine.tick();
 
     // Audio: news alert
@@ -334,9 +352,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     const netWorth = state.cash + totalInvestmentValue + shortPandL;
-    const unrealizedProfit = totalInvestmentValue - totalInvested + shortPandL;
-    const totalReturn = state.realizedProfit + unrealizedProfit;
-
     // ── Daily Holding Cost ──
     // Pay ₹5 per unique asset held (long OR short) per day
     let holdingCosts = 0;
@@ -452,15 +467,102 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const cashAfterFees = Math.max(0, state.cash + missionRewards - totalFees);
 
-    // ── Bankruptcy Check ──
-    // If net worth <= 0 and we have holdings, force liquidate everything
-    // Use the fee-adjusted net worth for the bankruptcy check
-    const netWorthAfterFees = cashAfterFees + totalInvestmentValue + shortPandL;
-    let forceLiquidated = false;
-    let resultHoldings = state.holdings;
+    // ── Black Swan Events ──
+    // Random rug pulls and insider scandals
+    const marketIsOpen = timeState.marketStatus === 'Open';
+    
+    if (marketIsOpen && Math.random() < RUG_PULL_BASE_CHANCE) {
+      // Random asset gets rug-pulled (drops 60-90%)
+      const rugPullCandidates = brainrots.filter(b => b.unlocked && b.rarity !== 'Legendary' && b.rarity !== 'Mythical');
+      if (rugPullCandidates.length > 0) {
+        const rugTarget = rugPullCandidates[Math.floor(Math.random() * rugPullCandidates.length)];
+        const rugDrop = 0.6 + Math.random() * 0.3; // 60-90% drop
+        rugTarget.currentPrice *= (1 - rugDrop);
+      }
+    }
+    
+    if (marketIsOpen && Math.random() < INSIDER_SCANDAL_CHANCE) {
+      // All assets in a random category lose 20-40%
+      const scandalCategories = ['Beverage Beasts', 'Electronic Animals', 'Corporate Creatures', 'Government Birds', 'Radioactive Rodents', 'Internet Predators', 'Financial Primates', 'Household Horrors', 'Quantum Creatures', 'Space Organisms'];
+      const scandalCategory = scandalCategories[Math.floor(Math.random() * scandalCategories.length)];
+      const scandalDrop = 0.2 + Math.random() * 0.2; // 20-40% drop
+      brainrots.filter(b => b.category === scandalCategory).forEach(b => {
+        b.currentPrice *= (1 - scandalDrop);
+      });
+    }
+
+    // Recalculate portfolio values after black swan events
+    let postSwanInvestmentValue = 0;
+    let postSwanShortPandL = 0;
+    for (const h of holdings) {
+      const asset = brainrots.find(b => b.id === h.assetId);
+      if (asset) {
+        if (h.quantity > 0) {
+          postSwanInvestmentValue += asset.currentPrice * h.quantity;
+        }
+        if (h.shortQuantity > 0) {
+          postSwanShortPandL += (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
+        }
+      }
+    }
+
     let resultCash = cashAfterFees;
     let resultBankruptcyCount = state.bankruptcyCount;
     let resultRealizedProfit = state.realizedProfit;
+    let resultHoldings = [...holdings];
+
+    // ── Margin Calls on Shorts ──
+    // If a short position loses more than 70% of margin, force cover with penalty
+    const assetsToLiquidate: string[] = [];
+    for (const h of resultHoldings) {
+      if (h.shortQuantity > 0) {
+        const asset = brainrots.find(b => b.id === h.assetId);
+        if (asset) {
+          const shortLoss = (asset.currentPrice - h.averageShortPrice) * h.shortQuantity;
+          const marginAtOpen = h.averageShortPrice * h.shortQuantity * 1.5;
+          if (marginAtOpen > 0) {
+            const lossRatio = shortLoss / marginAtOpen;
+            if (lossRatio > MARGIN_CALL_THRESHOLD) {
+              assetsToLiquidate.push(h.assetId);
+            }
+          }
+        }
+      }
+    }
+    
+    for (const assetId of assetsToLiquidate) {
+      const h = resultHoldings.find(rh => rh.assetId === assetId);
+      if (!h) continue;
+      const asset = brainrots.find(b => b.id === assetId);
+      if (!asset) continue;
+      // Force cover with penalty
+      const coverCost = asset.currentPrice * h.shortQuantity * (1 + MARGIN_CALL_PENALTY);
+      const fee = coverCost * BROKERAGE_FEE_RATE;
+      const totalCost = coverCost + fee;
+      const shortPnl = (h.averageShortPrice * h.shortQuantity) - totalCost;
+      resultRealizedProfit += shortPnl;
+      resultCash -= totalCost;
+    }
+    
+    // Remove the shorted assets that were liquidated, keep longs
+    resultHoldings = resultHoldings
+      .map(h => assetsToLiquidate.includes(h.assetId)
+        ? { ...h, shortQuantity: 0, averageShortPrice: 0 }
+        : h
+      )
+      .filter(h => h.quantity > 0 || h.shortQuantity > 0);
+
+    // ── Wealth-Scaled Daily Management Fee ──
+    let wealthFee = 0;
+    const netWorthPreFee = resultCash + postSwanInvestmentValue + postSwanShortPandL;
+    if (timeState.currentDay !== state.currentDay) {
+      wealthFee = Math.floor(Math.max(0, netWorthPreFee) * WEALTH_FEE_RATE);
+      resultCash -= wealthFee;
+    }
+
+    // ── Bankruptcy Check ──
+    const netWorthAfterFees = resultCash + postSwanInvestmentValue + postSwanShortPandL;
+    let forceLiquidated = false;
 
     if (netWorthAfterFees <= 0 && holdings.some(h => h.quantity > 0 || h.shortQuantity > 0)) {
       // Force liquidate all positions at current market prices
@@ -492,6 +594,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       resultBankruptcyCount++;
     }
 
+    // Recalculate short P&L after margin calls removed positions
+    let finalLongValue = 0;
+    let finalShortPandL = 0;
+    for (const h of resultHoldings) {
+      const asset = brainrots.find(b => b.id === h.assetId);
+      if (asset) {
+        if (h.quantity > 0) {
+          finalLongValue += asset.currentPrice * h.quantity;
+        }
+        if (h.shortQuantity > 0) {
+          finalShortPandL += (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
+        }
+      }
+    }
+    const finalNetWorth = Math.max(0, resultCash + finalLongValue + finalShortPandL);
+    const finalUnrealized = finalLongValue - totalInvested + finalShortPandL;
+
     set({
       cash: resultCash,
       holdings: resultHoldings,
@@ -509,10 +628,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       globalSentiment: result.globalSentiment,
       ticksUntilClose: timeState.ticksUntilClose,
       ticksUntilOpen: timeState.ticksUntilOpen,
-      netWorth: netWorthAfterFees < 0 ? 0 : netWorthAfterFees,
+      netWorth: finalNetWorth,
       totalInvested,
-      unrealizedProfit,
-      totalReturn,
+      unrealizedProfit: finalUnrealized,
+      totalReturn: resultRealizedProfit + finalUnrealized,
       bestAsset,
       worstAsset,
       largestHolding,
@@ -545,20 +664,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const asset = state.brainrots.find(b => b.id === assetId);
     if (!asset) return false;
 
+    // ── Position concentration limit ──
+    const existingHolding = state.holdings.find(h => h.assetId === assetId);
+    const currentValue = (existingHolding?.quantity ?? 0) * asset.currentPrice;
+    const newValue = currentValue + (asset.currentPrice * quantity);
+    const currentInvestedValue = state.holdings.reduce((sum, h) => {
+      const a = state.brainrots.find(b => b.id === h.assetId);
+      return sum + (a ? h.quantity * a.currentPrice : 0);
+    }, 0);
+    const maxAllowed = Math.max(state.netWorth, state.cash) * MAX_POSITION_RATIO;
+    if (newValue > maxAllowed && currentInvestedValue > 0) {
+      // Allow if this is a small position (< 5% of net worth)
+      if (currentValue > state.netWorth * 0.05) return false;
+    }
+
+    // ── Slippage calculation ──
+    const orderValue = asset.currentPrice * quantity;
+    const volumeImpact = asset.volume > 0 ? (orderValue / (asset.volume * asset.currentPrice)) : 0;
+    const slippageMultiplier = Math.min(2, 1 + (volumeImpact * SLIPPAGE_BASE * 100));
+    const effectivePrice = asset.currentPrice * slippageMultiplier;
+
     const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
-    const price = asset.currentPrice;
-    const totalCost = price * quantity;
+    const totalCost = effectivePrice * quantity;
     const fee = totalCost * feeRate;
     const totalWithFee = totalCost + fee;
 
     if (totalWithFee > state.cash) return false;
 
     // Execute trade
-    const existingHolding = state.holdings.find(h => h.assetId === assetId);
     const newQuantity = (existingHolding?.quantity ?? 0) + quantity;
     const newAvgPrice = existingHolding
-      ? (existingHolding.averagePurchasePrice * existingHolding.quantity + price * quantity) / newQuantity
-      : price;
+      ? (existingHolding.averagePurchasePrice * existingHolding.quantity + effectivePrice * quantity) / newQuantity
+      : effectivePrice;
 
     const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
     newHoldings.push({
@@ -567,6 +704,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       averagePurchasePrice: newAvgPrice,
       shortQuantity: existingHolding?.shortQuantity ?? 0,
       averageShortPrice: existingHolding?.averageShortPrice ?? 0,
+      longEntryTick: existingHolding?.longEntryTick ?? state.totalTicks,
+      shortEntryTick: existingHolding?.shortEntryTick ?? 0,
     });
 
     const trade: PlayerTrade = {
@@ -575,7 +714,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ticker: asset.ticker,
       type: 'Buy',
       quantity,
-      price,
+      price: effectivePrice,
       brokerageFee: fee,
       totalValue: totalWithFee,
       profitLoss: 0,
@@ -607,8 +746,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const holding = state.holdings.find(h => h.assetId === assetId);
     if (!holding || holding.quantity < quantity) return false;
 
-    const price = asset.currentPrice;
-    const totalValue = price * quantity;
+    // ── Slippage on large sells ──
+    const orderValue = asset.currentPrice * quantity;
+    const volumeImpact = asset.volume > 0 ? (orderValue / (asset.volume * asset.currentPrice)) : 0;
+    const slippageMultiplier = 1 - (volumeImpact * SLIPPAGE_BASE * 100);
+    const effectivePrice = Math.max(asset.currentPrice * 0.5, asset.currentPrice * slippageMultiplier);
+
+    const totalValue = effectivePrice * quantity;
     const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
     const fee = totalValue * feeRate;
     const netValue = totalValue - fee;
@@ -616,10 +760,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const costBasis = holding.averagePurchasePrice * quantity;
     let profitLoss = netValue - costBasis;
 
-    // Capital gains tax: 15% of profit when selling at a gain
+    // ── Graduated capital gains tax based on holding period ──
+    const holdingTicks = state.totalTicks - holding.longEntryTick;
+    let taxRate = LONG_TERM_TAX_RATE;
+    if (holdingTicks < SHORT_TERM_THRESHOLD) {
+      taxRate = SHORT_TERM_TAX_RATE; // 30% short-term
+    } else if (holdingTicks < MID_TERM_THRESHOLD) {
+      taxRate = MID_TERM_TAX_RATE;   // 20% mid-term
+    }
+
     let capitalGainsTax = 0;
     if (profitLoss > 0) {
-      capitalGainsTax = Math.floor(profitLoss * 0.15);
+      capitalGainsTax = Math.floor(profitLoss * taxRate);
       profitLoss -= capitalGainsTax;
     }
 
@@ -640,7 +792,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ticker: asset.ticker,
       type: 'Sell',
       quantity,
-      price,
+      price: effectivePrice,
       brokerageFee: fee,
       totalValue: netValue,
       profitLoss,
@@ -681,22 +833,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const asset = state.brainrots.find(b => b.id === assetId);
     if (!asset) return false;
 
-    const price = asset.currentPrice;
-    const totalValue = price * quantity;
+    // ── Slippage on large short orders ──
+    const orderValue = asset.currentPrice * quantity;
+    const volumeImpact = asset.volume > 0 ? (orderValue / (asset.volume * asset.currentPrice)) : 0;
+    const slippageMultiplier = 1 + (volumeImpact * SLIPPAGE_BASE * 100);
+    const effectivePrice = asset.currentPrice * slippageMultiplier;
+
+    const totalValue = effectivePrice * quantity;
     const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
     const fee = totalValue * feeRate;
     const netValue = totalValue - fee;
 
-    // Margin requirement: need 100% of sale value in cash (higher risk)
-    const marginRequired = totalValue;
+    // Margin requirement: need 150% of sale value in cash (higher risk)
+    const marginRequired = totalValue * 1.5;
     if (state.cash < marginRequired) return false;
 
     // Track short position
     const existingHolding = state.holdings.find(h => h.assetId === assetId);
     const newShortQty = (existingHolding?.shortQuantity ?? 0) + quantity;
     const newAvgShortPrice = existingHolding?.shortQuantity && existingHolding.shortQuantity > 0
-      ? (existingHolding.averageShortPrice * existingHolding.shortQuantity + price * quantity) / newShortQty
-      : price;
+      ? (existingHolding.averageShortPrice * existingHolding.shortQuantity + effectivePrice * quantity) / newShortQty
+      : effectivePrice;
 
     const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
     newHoldings.push({
@@ -705,17 +862,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       averagePurchasePrice: existingHolding?.averagePurchasePrice ?? 0,
       shortQuantity: newShortQty,
       averageShortPrice: newAvgShortPrice,
+      longEntryTick: existingHolding?.longEntryTick ?? 0,
+      shortEntryTick: existingHolding?.shortEntryTick ?? state.totalTicks,
     });
 
-    // Short P&L is negative when price goes up (we owe more)
-    // At open, P&L is 0
     const trade: PlayerTrade = {
       id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       assetId,
       ticker: asset.ticker,
       type: 'Short',
       quantity,
-      price,
+      price: effectivePrice,
       brokerageFee: fee,
       totalValue: netValue,
       profitLoss: 0,
@@ -747,8 +904,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const holding = state.holdings.find(h => h.assetId === assetId);
     if (!holding || !holding.shortQuantity || holding.shortQuantity < quantity) return false;
 
-    const price = asset.currentPrice;
-    const totalCost = price * quantity;
+    // ── Slippage on large cover orders ──
+    const orderValue = asset.currentPrice * quantity;
+    const volumeImpact = asset.volume > 0 ? (orderValue / (asset.volume * asset.currentPrice)) : 0;
+    const slippageMultiplier = 1 + (volumeImpact * SLIPPAGE_BASE * 100);
+    const effectivePrice = asset.currentPrice * slippageMultiplier;
+
+    const totalCost = effectivePrice * quantity;
     const feeRate = BROKERAGE_FEE_RATE - (state.prestigeUpgrades.find(u => u.id === 'lower_fees')?.currentLevel ?? 0) * 0.001;
     const fee = totalCost * feeRate;
     const totalWithFee = totalCost + fee;
@@ -758,7 +920,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // P&L for covering: shortAvgPrice - coverPrice (positive when price dropped)
     const proceedsAtOpen = holding.averageShortPrice * quantity;
     const costToClose = totalCost;
-    const profitLoss = proceedsAtOpen - costToClose - fee; // Fee eats into profit
+    let profitLoss = proceedsAtOpen - costToClose - fee;
+
+    // ── Graduated tax on short profits ──
+    const shortHoldingTicks = state.totalTicks - holding.shortEntryTick;
+    let shortTaxRate = LONG_TERM_TAX_RATE;
+    if (shortHoldingTicks < SHORT_TERM_THRESHOLD) {
+      shortTaxRate = SHORT_TERM_TAX_RATE;
+    } else if (shortHoldingTicks < MID_TERM_THRESHOLD) {
+      shortTaxRate = MID_TERM_TAX_RATE;
+    }
+
+    let shortCapitalGainsTax = 0;
+    if (profitLoss > 0) {
+      shortCapitalGainsTax = Math.floor(profitLoss * shortTaxRate);
+      profitLoss -= shortCapitalGainsTax;
+    }
 
     const newShortQty = holding.shortQuantity - quantity;
     const newHoldings = state.holdings.filter(h => h.assetId !== assetId);
@@ -769,6 +946,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         averagePurchasePrice: holding.averagePurchasePrice ?? 0,
         shortQuantity: newShortQty,
         averageShortPrice: holding.averageShortPrice,
+        longEntryTick: holding.longEntryTick ?? 0,
+        shortEntryTick: holding.shortEntryTick ?? 0,
       });
     }
 
@@ -778,7 +957,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ticker: asset.ticker,
       type: 'Cover',
       quantity,
-      price,
+      price: effectivePrice,
       brokerageFee: fee,
       totalValue: totalWithFee,
       profitLoss,
@@ -797,9 +976,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     set({
-      cash: state.cash - totalWithFee,
+      cash: state.cash - totalWithFee - shortCapitalGainsTax,
       holdings: newHoldings,
-      realizedProfit: newRealizedProfit,
+      realizedProfit: newRealizedProfit - shortCapitalGainsTax,
+      taxesPaid: state.taxesPaid + shortCapitalGainsTax,
       trades: [trade, ...state.trades].slice(0, 500),
       xp: state.xp + xpGain,
     });
@@ -933,6 +1113,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
               ...h,
               shortQuantity: h.shortQuantity ?? 0,
               averageShortPrice: h.averageShortPrice ?? 0,
+              longEntryTick: h.longEntryTick ?? 0,
+              shortEntryTick: h.shortEntryTick ?? 0,
             }))
           : [],
         realizedProfit: data.realizedProfit ?? 0,
@@ -1052,6 +1234,8 @@ function loadGame(): Partial<GameState> | null {
             ...h,
             shortQuantity: h.shortQuantity ?? 0,
             averageShortPrice: h.averageShortPrice ?? 0,
+            longEntryTick: h.longEntryTick ?? 0,
+            shortEntryTick: h.shortEntryTick ?? 0,
           }))
         : [],
       realizedProfit: data.realizedProfit ?? 0,

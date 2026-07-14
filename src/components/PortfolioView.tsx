@@ -319,7 +319,7 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
                   <div className="flex items-center gap-2 cursor-pointer min-w-0 flex-1" onClick={() => onViewAsset?.(h.assetId)}>
                     <span className="text-lg flex-shrink-0">{h.asset.icon}</span>
                     <div className="min-w-0">
-                      <div className="font-bold text-brainrot-text hover:text-brainrot-accent transition-colors truncate">{h.asset.ticker}</div>
+                      <div className="font-bold hover:text-brainrot-accent transition-colors truncate" style={getCategoryStyle(h.asset.category)}>{h.asset.ticker}</div>
                       <div className="text-[10px] sm:text-xs text-brainrot-muted truncate">{h.shortQuantity} @ ₹{h.averageShortPrice.toFixed(2)}</div>
                     </div>
                   </div>
@@ -360,7 +360,7 @@ export function PortfolioView({ onViewAsset }: { onViewAsset?: (assetId: string)
                 <div className="flex items-center gap-3">
                   <span className="text-brainrot-muted font-mono">₹{trade.price.toFixed(2)}</span>
                   {trade.type === 'Sell' && (
-                    <span className={trade.profitLoss >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+                    <span className={trade.profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}>
                       {trade.profitLoss >= 0 ? '+' : ''}{formatCash(trade.profitLoss)}
                     </span>
                   )}

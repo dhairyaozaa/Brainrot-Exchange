@@ -335,10 +335,10 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
                   <td className="py-2 px-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{asset.icon}</span>
-                      <span className="text-brainrot-text truncate max-w-[120px] group-hover:text-brainrot-accent transition-colors">{asset.name}</span>
+                      <span className="truncate max-w-[120px] group-hover:text-brainrot-accent transition-colors" style={getCategoryStyle(asset.category)}>{asset.name}</span>
                     </div>
                   </td>
-                  <td className="py-2 px-2 font-bold text-brainrot-text">{asset.ticker}</td>
+                  <td className="py-2 px-2 font-bold" style={getCategoryStyle(asset.category)}>{asset.ticker}</td>
                   <td className="py-2 px-2">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${getCategoryColor(asset.category).bgClass} ${getCategoryColor(asset.category).twClass} ${getCategoryColor(asset.category).borderClass} border`}>
                       {getCategoryColor(asset.category).label}
@@ -382,10 +382,10 @@ export function MarketView({ onViewAsset }: { onViewAsset?: (assetId: string) =>
                   </td>
                   <td className="py-2 px-2 text-right">
                     {holding && holding.quantity > 0 && (
-                      <div className="text-brainrot-blue text-[10px]">▲ {holding.quantity} @ ₹{holding.averagePurchasePrice.toFixed(0)}</div>
+                      <div className="text-[10px]" style={asset ? getCategoryStyle(asset.category) : {}}>▲ {holding.quantity} @ ₹{holding.averagePurchasePrice.toFixed(0)}</div>
                     )}
                     {holding && holding.shortQuantity > 0 && (
-                      <div className="text-brainrot-orange text-[10px]">▼ {holding.shortQuantity} @ ₹{holding.averageShortPrice.toFixed(0)}</div>
+                      <div className="text-[10px]" style={asset ? getCategoryStyle(asset.category) : {}}>▼ {holding.shortQuantity} @ ₹{holding.averageShortPrice.toFixed(0)}</div>
                     )}
                     {(!holding || (holding.quantity <= 0 && holding.shortQuantity <= 0)) && (
                       <span className="text-brainrot-muted">-</span>

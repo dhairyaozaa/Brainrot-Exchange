@@ -221,7 +221,7 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             </div>
             <div>
               <span className="text-brainrot-muted">P&L: </span>
-              <span className={(asset.currentPrice - holding.averagePurchasePrice) * holding.quantity >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+              <span className={(asset.currentPrice - holding.averagePurchasePrice) * holding.quantity >= 0 ? 'text-green-400' : 'text-red-400'}>
                 {formatPrice((asset.currentPrice - holding.averagePurchasePrice) * holding.quantity)}
               </span>
             </div>
@@ -248,7 +248,7 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             </div>
             <div>
               <span className="text-brainrot-muted">Unrealized P&L: </span>
-              <span className={(holding.averageShortPrice - asset.currentPrice) * holding.shortQuantity >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+              <span className={(holding.averageShortPrice - asset.currentPrice) * holding.shortQuantity >= 0 ? 'text-green-400' : 'text-red-400'}>
                 {formatPrice((holding.averageShortPrice - asset.currentPrice) * holding.shortQuantity)}
               </span>
             </div>
@@ -393,7 +393,7 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
             </div>
             {holding && (
               <div className="text-xs text-brainrot-muted">
-                Est. P&L: <span className={(asset.currentPrice * (1 - feeRate) - holding.averagePurchasePrice) * sellQty >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+                Est. P&L:                <span className={(asset.currentPrice * (1 - feeRate) - holding.averagePurchasePrice) * sellQty >= 0 ? 'text-green-400' : 'text-red-400'}>
                   {formatPrice((asset.currentPrice * (1 - feeRate) - holding.averagePurchasePrice) * sellQty)}
                 </span>
               </div>
@@ -526,7 +526,7 @@ export function AssetDetail({ assetId, onBack }: { assetId: string; onBack: () =
               {holding && (
                 <div className="flex justify-between text-xs font-bold">
                   <span className="text-brainrot-muted">Est. P&L</span>
-                  <span className={(holding.averageShortPrice - asset.currentPrice - asset.currentPrice * feeRate) * coverQty >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+                  <span className={(holding.averageShortPrice - asset.currentPrice - asset.currentPrice * feeRate) * coverQty >= 0 ? 'text-green-400' : 'text-red-400'}>
                     {formatPrice((holding.averageShortPrice - asset.currentPrice - asset.currentPrice * feeRate) * coverQty)}
                   </span>
                 </div>

@@ -12,8 +12,18 @@ import { MISSIONS } from '../data/missions';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { MarketEngine } from '../simulation/MarketEngine';
 import { playTradeSound, playCashSound, playNewsSound, playCrashSound, playRallySound, playUpgradeSound, playPrestigeSound } from '../utils/audio';
-
-const BROKERAGE_FEE_RATE = 0.025; // 2.5% fee (increased for challenge)
+import {
+  calculatePortfolioValues,
+  calculateFees,
+  calculateXPAndRank,
+  checkMissions,
+  checkAchievements,
+  executeMarginCalls,
+  checkBankruptcy,
+  calculateFinalMetrics,
+  BROKERAGE_FEE_RATE,
+  WEALTH_FEE_RATE,
+} from './marketTickHelpers';
 
 // ── Difficulty Constants ──
 const SHORT_TERM_TAX_RATE = 0.30;   // < 10 ticks held
@@ -22,9 +32,6 @@ const LONG_TERM_TAX_RATE = 0.10;    // > 30 ticks held
 const SHORT_TERM_THRESHOLD = 10;    // ticks for short-term classification
 const MID_TERM_THRESHOLD = 30;      // ticks for mid-term classification
 const SLIPPAGE_BASE = 0.002;        // 0.2% base slippage per 1% of volume
-const MARGIN_CALL_THRESHOLD = 0.70; // Force cover at 70% loss on shorts
-const MARGIN_CALL_PENALTY = 0.05;   // 5% penalty on forced cover
-const WEALTH_FEE_RATE = 0.001;      // 0.1% of net worth per day
 const MAX_POSITION_RATIO = 0.25;    // Max 25% of net worth in one asset
 const RUG_PULL_BASE_CHANCE = 0.0002; // Base chance per tick of rug pull
 const INSIDER_SCANDAL_CHANCE = 0.0003; // Chance of insider scandal event
@@ -313,145 +320,51 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const brainrots = result.brainrots;
     const timeState = engine.timeEngine.getState();
-
-    // Calculate portfolio values (including short positions)
     const holdings = state.holdings;
-    let totalInvestmentValue = 0;
-    let totalInvested = 0;
-    let shortPandL = 0;
-    let bestAsset = '';
-    let worstAsset = '';
-    let bestReturn = -Infinity;
-    let worstReturn = Infinity;
-    let largestHolding = '';
-    let largestValue = 0;
 
-    for (const h of holdings) {
-      const asset = brainrots.find(b => b.id === h.assetId);
-      if (asset) {
-        // Long position
-        if (h.quantity > 0) {
-          const value = asset.currentPrice * h.quantity;
-          const invested = h.averagePurchasePrice * h.quantity;
-          totalInvestmentValue += value;
-          totalInvested += invested;
-          const ret = (value - invested) / invested;
-          if (ret > bestReturn) { bestReturn = ret; bestAsset = asset.name; }
-          if (ret < worstReturn) { worstReturn = ret; worstAsset = asset.name; }
-          if (value > largestValue) { largestValue = value; largestHolding = asset.name; }
-        }
-        // Short position
-        if (h.shortQuantity > 0) {
-          const shortValue = (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
-          shortPandL += shortValue;
-          if (shortValue > bestReturn) { bestReturn = shortValue; bestAsset = asset.name + ' (Short)'; }
-          if (shortValue < worstReturn) { worstReturn = shortValue; worstAsset = asset.name + ' (Short)'; }
-          if (Math.abs(shortValue) > largestValue) { largestValue = Math.abs(shortValue); largestHolding = asset.name + ' (Short)'; }
-        }
-      }
-    }
+    // ── Portfolio Value Calculation ──
+    const portfolio = calculatePortfolioValues(state.cash, holdings, brainrots);
+    const { totalInvestmentValue, totalInvested, shortPandL, bestAsset, worstAsset, largestHolding, netWorth } = portfolio;
 
-    const netWorth = state.cash + totalInvestmentValue + shortPandL;
-    // ── Daily Holding Cost ──
-    // Pay ₹5 per unique asset held (long OR short) per day
-    let holdingCosts = 0;
-    if (timeState.currentDay !== state.currentDay) {
-      const activeAssets = new Set<string>();
-      for (const h of holdings) {
-        if (h.quantity > 0 || h.shortQuantity > 0) {
-          activeAssets.add(h.assetId);
-        }
-      }
-      holdingCosts = activeAssets.size * 5;
-    }
+    // ── Fee Calculation ──
+    const { holdingCosts, shortBorrowFees, totalFees } = calculateFees(holdings, brainrots, state.cash, timeState.currentDay, state.currentDay);
 
-    // ── Short Borrow Fee ──
-    // Pay 0.05% of short position value per tick
-    let shortBorrowFees = 0;
-    for (const h of holdings) {
-      if (h.shortQuantity > 0) {
-        const asset = brainrots.find(b => b.id === h.assetId);
-        if (asset) {
-          shortBorrowFees += Math.floor(asset.currentPrice * h.shortQuantity * 0.0005);
-        }
-      }
-    }
-    shortBorrowFees = Math.min(shortBorrowFees, state.cash * 0.5); // Cap at 50% of cash to prevent instant bankruptcy
-
-    const totalFees = holdingCosts + shortBorrowFees;
-
-    // XP calculation
-    let xpGain = 0;
-    if (result.newNews) xpGain += 5;
-    if (result.whaleTrades.length > 0) xpGain += 2;
-    if (result.newRotterPosts.length > 0) xpGain += 1;
-
+    // ── XP & Rank Calculation ──
     const xpBoost = state.upgrades.find(u => u.id === 'rgb_desk')?.purchased ? 1.1 : 1;
     const prestigeXpBoost = 1 + (state.prestigeUpgrades.find(u => u.id === 'xp_boost')?.currentLevel ?? 0) * 0.2;
+    const { newXp, newLevel, newRankIndex } = calculateXPAndRank(
+      state.xp, state.level, state.rankIndex,
+      !!result.newNews, result.whaleTrades.length, result.newRotterPosts.length,
+      xpBoost, prestigeXpBoost,
+    );
 
-    const newXp = state.xp + xpGain * xpBoost * prestigeXpBoost;
+    // ── Mission Checking ──
+    const { missionRewards, updatedMissions } = checkMissions(state.missions, get);
 
-    // Calculate level
-    let newLevel = state.level;
-    let newRankIndex = state.rankIndex;
-    const xpForNextLevel = state.level * 150 + 50;
-    if (newXp >= xpForNextLevel) {
-      newLevel++;
-    }
+    // ── Achievement Checking ──
+    const updatedAchievements = checkAchievements(state.achievements, get);
 
-    // Calculate rank
-    for (let i = RANK_XP_THRESHOLDS.length - 1; i >= 0; i--) {
-      if (newLevel >= RANK_XP_THRESHOLDS[i]) {
-        newRankIndex = i;
-        break;
-      }
-    }
-
-    // Check missions (track reward cash separately instead of mutating state.cash)
-    let missionRewards = 0;
-    const updatedMissions = state.missions.map(m => {
-      if (m.completed) return m;
-      const completed = m.condition(get());
-      if (completed) {
-        missionRewards += m.reward;
-        return { ...m, completed: true };
-      }
-      return m;
-    });
-
-    // Check achievements
-    const updatedAchievements = state.achievements.map(a => {
-      if (a.unlocked) return a;
-      const unlocked = a.condition(get());
-      if (unlocked) {
-        return { ...a, unlocked: true, unlockedAt: Date.now() };
-      }
-      return a;
-    });
-
-    // Check for newly unlocked assets based on net worth
+    // ── Asset Unlock Check ──
     const updatedBrainrotsUnlock = computeUnlockedBrainrots(brainrots, netWorth);
     const finalBrainrots = updatedBrainrotsUnlock ?? brainrots;
-    // Keep the engine in sync
     if (updatedBrainrotsUnlock) {
       engine.brainrots = updatedBrainrotsUnlock;
     }
 
-    // Add new news
+    // ── News Update ──
     const updatedNews = [...state.news];
     if (result.newNews) {
       updatedNews.unshift(result.newNews);
-      // Limit to 50 news items
       if (updatedNews.length > 50) updatedNews.length = 50;
     }
 
-    // Add new rotter posts
+    // ── Rotter Posts Update ──
     const updatedRotterPosts = [...state.rotterPosts, ...result.newRotterPosts];
     if (updatedRotterPosts.length > 200) {
       updatedRotterPosts.splice(0, updatedRotterPosts.length - 200);
     }
 
-    // Track recent whale trades
+    // ── Whale Trade Tracking ──
     const newWhaleTrades: WhaleTradeLog[] = result.whaleTrades.map(t => ({
       whaleName: t.whaleName,
       whaleId: t.whaleId,
@@ -465,94 +378,49 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }));
     const updatedWhaleTrades = [...newWhaleTrades, ...state.recentWhaleTrades].slice(0, 50);
 
-    const cashAfterFees = Math.max(0, state.cash + missionRewards - totalFees);
+    // ── Cash After Fees ──
+    let resultCash = Math.max(0, state.cash + missionRewards - totalFees);
+    let resultBankruptcyCount = state.bankruptcyCount;
+    let resultRealizedProfit = state.realizedProfit;
+    let resultHoldings = [...holdings];
 
     // ── Black Swan Events ──
-    // Random rug pulls and insider scandals
     const marketIsOpen = timeState.marketStatus === 'Open';
-    
     if (marketIsOpen && Math.random() < RUG_PULL_BASE_CHANCE) {
-      // Random asset gets rug-pulled (drops 60-90%)
       const rugPullCandidates = brainrots.filter(b => b.unlocked && b.rarity !== 'Legendary' && b.rarity !== 'Mythical');
       if (rugPullCandidates.length > 0) {
         const rugTarget = rugPullCandidates[Math.floor(Math.random() * rugPullCandidates.length)];
-        const rugDrop = 0.6 + Math.random() * 0.3; // 60-90% drop
+        const rugDrop = 0.6 + Math.random() * 0.3;
         rugTarget.currentPrice *= (1 - rugDrop);
       }
     }
-    
     if (marketIsOpen && Math.random() < INSIDER_SCANDAL_CHANCE) {
-      // All assets in a random category lose 20-40%
       const scandalCategories = ['Beverage Beasts', 'Electronic Animals', 'Corporate Creatures', 'Government Birds', 'Radioactive Rodents', 'Internet Predators', 'Financial Primates', 'Household Horrors', 'Quantum Creatures', 'Space Organisms'];
       const scandalCategory = scandalCategories[Math.floor(Math.random() * scandalCategories.length)];
-      const scandalDrop = 0.2 + Math.random() * 0.2; // 20-40% drop
+      const scandalDrop = 0.2 + Math.random() * 0.2;
       brainrots.filter(b => b.category === scandalCategory).forEach(b => {
         b.currentPrice *= (1 - scandalDrop);
       });
     }
 
-    // Recalculate portfolio values after black swan events
+    // ── Post-Swan Portfolio Recalculation ──
     let postSwanInvestmentValue = 0;
     let postSwanShortPandL = 0;
     for (const h of holdings) {
       const asset = brainrots.find(b => b.id === h.assetId);
       if (asset) {
-        if (h.quantity > 0) {
-          postSwanInvestmentValue += asset.currentPrice * h.quantity;
-        }
-        if (h.shortQuantity > 0) {
-          postSwanShortPandL += (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
-        }
+        if (h.quantity > 0) postSwanInvestmentValue += asset.currentPrice * h.quantity;
+        if (h.shortQuantity > 0) postSwanShortPandL += (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
       }
     }
 
-    let resultCash = cashAfterFees;
-    let resultBankruptcyCount = state.bankruptcyCount;
-    let resultRealizedProfit = state.realizedProfit;
-    let resultHoldings = [...holdings];
+    // ── Margin Calls ──
+    const marginResult = executeMarginCalls(resultHoldings, brainrots, resultCash, resultRealizedProfit);
+    resultCash = marginResult.resultCash;
+    resultHoldings = marginResult.resultHoldings;
+    resultRealizedProfit = marginResult.resultRealizedProfit;
 
-    // ── Margin Calls on Shorts ──
-    // If a short position loses more than 70% of margin, force cover with penalty
-    const assetsToLiquidate: string[] = [];
-    for (const h of resultHoldings) {
-      if (h.shortQuantity > 0) {
-        const asset = brainrots.find(b => b.id === h.assetId);
-        if (asset) {
-          const shortLoss = (asset.currentPrice - h.averageShortPrice) * h.shortQuantity;
-          const marginAtOpen = h.averageShortPrice * h.shortQuantity * 1.5;
-          if (marginAtOpen > 0) {
-            const lossRatio = shortLoss / marginAtOpen;
-            if (lossRatio > MARGIN_CALL_THRESHOLD) {
-              assetsToLiquidate.push(h.assetId);
-            }
-          }
-        }
-      }
-    }
-    
-    for (const assetId of assetsToLiquidate) {
-      const h = resultHoldings.find(rh => rh.assetId === assetId);
-      if (!h) continue;
-      const asset = brainrots.find(b => b.id === assetId);
-      if (!asset) continue;
-      // Force cover with penalty
-      const coverCost = asset.currentPrice * h.shortQuantity * (1 + MARGIN_CALL_PENALTY);
-      const fee = coverCost * BROKERAGE_FEE_RATE;
-      const totalCost = coverCost + fee;
-      const shortPnl = (h.averageShortPrice * h.shortQuantity) - totalCost;
-      resultRealizedProfit += shortPnl;
-      resultCash -= totalCost;
-    }
-    
-    // Remove the shorted assets that were liquidated, keep longs
-    resultHoldings = resultHoldings
-      .map(h => assetsToLiquidate.includes(h.assetId)
-        ? { ...h, shortQuantity: 0, averageShortPrice: 0 }
-        : h
-      )
-      .filter(h => h.quantity > 0 || h.shortQuantity > 0);
-
-    // ── Wealth-Scaled Daily Management Fee ──
+    // ── Wealth Fee ──
     let wealthFee = 0;
     const netWorthPreFee = resultCash + postSwanInvestmentValue + postSwanShortPandL;
     if (timeState.currentDay !== state.currentDay) {
@@ -561,56 +429,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     // ── Bankruptcy Check ──
-    const netWorthAfterFees = resultCash + postSwanInvestmentValue + postSwanShortPandL;
-    let forceLiquidated = false;
+    const bankruptcyResult = checkBankruptcy(
+      resultHoldings, brainrots, resultCash, resultRealizedProfit, resultBankruptcyCount,
+      postSwanInvestmentValue, postSwanShortPandL,
+    );
+    resultCash = bankruptcyResult.resultCash;
+    resultHoldings = bankruptcyResult.resultHoldings;
+    resultRealizedProfit = bankruptcyResult.resultRealizedProfit;
+    resultBankruptcyCount = bankruptcyResult.resultBankruptcyCount;
+    const forceLiquidated = bankruptcyResult.forceLiquidated;
 
-    if (netWorthAfterFees <= 0 && holdings.some(h => h.quantity > 0 || h.shortQuantity > 0)) {
-      // Force liquidate all positions at current market prices
-      forceLiquidated = true;
-      let liquidationValue = 0;
-      for (const h of holdings) {
-        const asset = brainrots.find(b => b.id === h.assetId);
-        if (asset) {
-          if (h.quantity > 0) {
-            const saleValue = asset.currentPrice * h.quantity;
-            const fee = saleValue * BROKERAGE_FEE_RATE;
-            const netSale = saleValue - fee;
-            resultRealizedProfit += netSale - (h.averagePurchasePrice * h.quantity);
-            liquidationValue += netSale;
-          }
-          if (h.shortQuantity > 0) {
-            // Force cover shorts at current price (loss if price went up)
-            const buybackCost = asset.currentPrice * h.shortQuantity;
-            const fee = buybackCost * BROKERAGE_FEE_RATE;
-            const totalCost = buybackCost + fee;
-            const shortPnl = (h.averageShortPrice * h.shortQuantity) - buybackCost - fee;
-            resultRealizedProfit += shortPnl;
-            liquidationValue -= totalCost;
-          }
-        }
-      }
-      resultCash = Math.max(0, resultCash + liquidationValue);
-      resultHoldings = [];
-      resultBankruptcyCount++;
-    }
+    // ── Final Metrics ──
+    const { finalNetWorth, finalUnrealized } = calculateFinalMetrics(resultHoldings, brainrots, resultCash, totalInvested);
 
-    // Recalculate short P&L after margin calls removed positions
-    let finalLongValue = 0;
-    let finalShortPandL = 0;
-    for (const h of resultHoldings) {
-      const asset = brainrots.find(b => b.id === h.assetId);
-      if (asset) {
-        if (h.quantity > 0) {
-          finalLongValue += asset.currentPrice * h.quantity;
-        }
-        if (h.shortQuantity > 0) {
-          finalShortPandL += (h.averageShortPrice - asset.currentPrice) * h.shortQuantity;
-        }
-      }
-    }
-    const finalNetWorth = Math.max(0, resultCash + finalLongValue + finalShortPandL);
-    const finalUnrealized = finalLongValue - totalInvested + finalShortPandL;
-
+    // ── State Update ──
     set({
       cash: resultCash,
       holdings: resultHoldings,

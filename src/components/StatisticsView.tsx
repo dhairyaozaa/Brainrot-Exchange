@@ -12,9 +12,9 @@ export function StatisticsView() {
 
   const stats = [
     { label: 'Cash', value: formatCash(state.cash) },
-    { label: 'Net Worth', value: formatCash(state.netWorth), color: state.netWorth >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red' },
+    { label: 'Net Worth', value: formatCash(state.netWorth), color: state.netWorth >= 0 ? 'text-green-400' : 'text-red-400' },
     { label: 'Total Invested', value: formatCash(state.totalInvested) },
-    { label: 'Realized Profit', value: formatCash(state.realizedProfit), color: state.realizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red' },
+    { label: 'Realized Profit', value: formatCash(state.realizedProfit), color: state.realizedProfit >= 0 ? 'text-green-400' : 'text-red-400' },
     { label: 'Total Trades', value: state.trades.length.toString() },
     { label: 'Buy Trades', value: state.trades.filter(t => t.type === 'Buy').length.toString() },
     { label: 'Sell Trades', value: state.trades.filter(t => t.type === 'Sell').length.toString() },

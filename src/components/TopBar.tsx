@@ -63,13 +63,13 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
           </div>
           <div className="text-brainrot-text">
             <span className="text-brainrot-muted">N </span>
-            <span className={`font-mono text-[10px] sm:text-xs ${netWorth > 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <span className={`font-mono text-[10px] sm:text-xs ${netWorth > 0 ? 'text-green-400' : netWorth < 0 ? 'text-red-400' : 'text-brainrot-text'}`}>
               {formatCash(netWorth)}
             </span>
           </div>
           <div className="hidden md:inline text-brainrot-text">
             <span className="text-brainrot-muted">P&L </span>
-            <span className={`font-mono text-[10px] sm:text-xs ${realizedProfit >= 0 ? 'text-brainrot-accent' : 'text-brainrot-red'}`}>
+            <span className={`font-mono text-[10px] sm:text-xs ${realizedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {formatCash(realizedProfit)}
             </span>
           </div>

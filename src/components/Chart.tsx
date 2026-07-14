@@ -128,7 +128,7 @@ function CandleSVG({ candles, height }: { candles: CandleData[]; height: number 
           <div className="text-brainrot-text">O: ₹{hoveredCandle.open.toFixed(2)}</div>
           <div className="text-brainrot-text">H: ₹{hoveredCandle.high.toFixed(2)}</div>
           <div className="text-brainrot-text">L: ₹{hoveredCandle.low.toFixed(2)}</div>
-          <div className={hoveredCandle.close >= hoveredCandle.open ? 'text-brainrot-accent' : 'text-brainrot-red'}>
+          <div className={hoveredCandle.close >= hoveredCandle.open ? 'text-green-400' : 'text-red-400'}>
             C: ₹{hoveredCandle.close.toFixed(2)}
           </div>
         </div>
